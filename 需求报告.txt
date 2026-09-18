@@ -849,8 +849,9 @@ G-001 ~ G-020、RISK-001 ~ RISK-003 均已处理完毕，本需求换的是「�
     Maven               本机未安装 → 已引入 Maven Wrapper（mvnw / mvnw.cmd /
                         .mvn/），不装全局；顺带使「他人 clone 后无需装 Maven
                         即可构建」。实测 Maven 3.9.16 + JDK 21.0.5 构建通过
-    Node / npm          本机未安装 → 仍待安装 Node.js LTS。前端在第 2 阶段才会
-                        用到，故不阻塞阶段 0 的其余工作
+    Node / npm          本机未安装 → 已于 2026-09-18 经 winget 安装 Node.js LTS
+                        24.19.0（npm 11.17.0），位置 C:\Program Files\nodejs，
+                        已写入系统 PATH
     IDEA                Ultimate 2026.1.4，Spring Boot 支持齐备
     磁盘                E 盘剩余 255G
 
@@ -896,6 +897,7 @@ G-001 ~ G-020、RISK-001 ~ RISK-003 均已处理完毕，本需求换的是「�
     realestate-desktop/      10 个源文件（入口 + ui + view）
     realestate-web/          Spring Boot 骨架（主类 + 探活接口 + 配置）
     db.properties(.example)  由 com.realestate/ 移到仓库根目录
+    .gitattributes           固定换行符：mvnw / *.sh 用 LF，*.cmd / *.bat 用 CRLF
 
 代码去向（实际搬迁结果，可与 5.5 的预估对照）：
 
@@ -984,7 +986,19 @@ G-001 ~ G-020、RISK-001 ~ RISK-003 均已处理完毕，本需求换的是「�
 
 配套修复：BUG-005（数据库连接在 MySQL 重启后首次失败，详见第六章）
 
-尚未完成：安装 Node.js LTS（前端第 2 阶段才会用到，不阻塞阶段 1）
+另有两处容易漏掉的收尾（都是「不处理就会在别人机器上坏掉」的类型）：
+
+    · mvnw 必须以可执行位入库，否则 Linux / macOS 上无法直接执行。
+      本机 core.filemode 关闭，git 默认按 100644 记录，已在索引中显式置为 100755。
+    · 本机 core.autocrlf=true，git 检出时会把它转成 CRLF——而 CRLF 会让 shebang
+      带上多余的 \r，./mvnw 随即失效。故新增 .gitattributes 显式规定：
+      mvnw / *.sh 用 LF，*.cmd / *.bat 用 CRLF，二进制文件不参与转换。
+
+Node.js：已于 2026-09-18 经 winget 安装 LTS 24.19.0（npm 11.17.0），
+         位置 C:\Program Files\nodejs，已写入系统 PATH（需新开终端生效）。
+         至此阶段 0 无遗留项。
+
+（更正：本节初稿曾记「尚未完成：安装 Node.js LTS」，当天即补齐，故不再列为遗留。）
 
 ================================================================================
 六、既存缺陷与风险
@@ -1277,10 +1291,9 @@ RISK-004  git 代理端口硬耦合
     —— 以下是 R-004（架构改造：前后端分离）的实施阶段，方案见第五章 ——
 
     [ ]  R-004  架构改造（前后端分离），分六阶段推进
-    [x]  R-004 阶段 0  环境与骨架（2026-09-18 完成：引入 Maven Wrapper、
-                       按模块搬迁代码、桌面端改经 Maven 运行且实测仍可运行）
-    [ ]  R-004 阶段 0 遗留：安装 Node.js LTS（前端第 2 阶段才会用到，
-                       不阻塞阶段 1；方式待定——官方安装包 / 便携版 / 由 IDEA 下载）
+    [x]  R-004 阶段 0  环境与骨架（2026-09-18 完成：引入 Maven Wrapper 3.3.4、
+                       按模块搬迁代码、桌面端改经 Maven 运行且实测仍可运行、
+                       单元测试接入构建、经 winget 安装 Node.js LTS 24.19.0）
     [ ]  R-004 阶段 1  后端打通一条链路：登录 + 房屋列表（JWT、统一响应、
                        全局异常、连接池）
     [ ]  R-004 阶段 2  前端打通同一条链路：登录页 + 房屋列表页（CORS、token 拦截器）
@@ -2214,7 +2227,11 @@ G-020  已租出的房源仍可登记带看                             【已�
              顺带清理：报告正文中的 Markdown 加粗标记（16 行）改为纯文本，
              git 通配写法（refs/heads/**）保留。
 
-             仍未完成：安装 Node.js LTS（前端第 2 阶段才用到）。
+             同日晚些时候经 winget 安装 Node.js LTS 24.19.0（npm 11.17.0），
+             已写入系统 PATH，阶段 0 至此无遗留项。另新增 .gitattributes 固定
+             mvnw 的换行符（本机 autocrlf=true 会让 shebang 失效），并在索引中
+             为其补上可执行位（本机 core.filemode 关闭，默认会按 100644 入库，
+             导致 Linux / macOS 上无法直接执行）。
 
 ================================================================================
                                   —— 文件结束 ——
