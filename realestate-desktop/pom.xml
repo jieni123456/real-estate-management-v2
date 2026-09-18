@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.realestate</groupId>
+        <artifactId>realestate-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>realestate-desktop</artifactId>
+    <name>realestate-desktop（Swing 桌面端）</name>
+    <description>
+        原有的 Swing 桌面程序，R-004 改造后保留、与网页端并存。
+          desktop  入口 RealEstateSystem
+          view     各功能页面
+          ui       Theme（配色与字体）、Icons（自绘图标）——界面资产，故不放 core
+
+        与网页端共用 realestate-core 中的全部业务逻辑。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.realestate</groupId>
+            <artifactId>realestate-core</artifactId>
+        </dependency>
+
+        <!-- 现代扁平外观。桌面端专属，core 不依赖它 -->
+        <dependency>
+            <groupId>com.formdev</groupId>
+            <artifactId>flatlaf</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!-- 注意：db.properties 需放在仓库根目录（即本模块的上一级）。
+             AppConfig 的查找顺序是 运行目录 → 上一级 → config/ → classpath，
+             因此无论工作目录设为本模块还是仓库根，都能读到。 -->
+
+        <plugins>
+            <!-- 命令行启动：./mvnw -pl realestate-desktop exec:java -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>desktop.RealEstateSystem</mainClass>
+                    <workingDirectory>${project.basedir}</workingDirectory>
+                </configuration>
+            </plugin>
+
+            <!-- 打包出可直接运行的单文件 jar（含 flatlaf、core、mysql 驱动）：
+                   java -jar realestate-desktop-<版本>-jar-with-dependencies.jar
+                 目录里那份不带依赖的普通 jar 不能单独运行。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>desktop.RealEstateSystem</mainClass>
+                        </manifest>
+                    </archive>
+                    <descriptorRefs>
+                        <descriptorRef>jar-with-dependencies</descriptorRef>
+                    </descriptorRefs>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-runnable-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

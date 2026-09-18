@@ -1,0 +1,38 @@
+# ===================================================================
+# 应用配置模板
+#
+# 用法：复制本文件为 db.properties，然后填写真实的值。
+#      db.properties 已被 .gitignore 排除，不会进入版本库。
+#
+# 优先级（从高到低）：同名的系统属性  >  环境变量  >  本文件  >  代码内置默认值
+# ===================================================================
+
+# --------------------------------------------------------------- 数据库
+# 也可用环境变量 DB_URL / DB_USER / DB_PASSWORD 覆盖
+#
+# allowPublicKeyRetrieval=true 不可省略（BUG-005）：
+#   MySQL 8 的账号默认使用 caching_sha2_password 认证插件。当连接未加密
+#   （useSSL=false）时，驱动需要向服务端索取 RSA 公钥来完成首次认证，
+#   而该行为默认被禁止，会直接报错：
+#       Public Key Retrieval is not allowed
+#   它只在服务端的认证缓存为空时暴露，也就是每次重启 MySQL 之后的第一
+#   次连接；随后缓存被填上，连接又会恢复正常——因此极易被当成偶发问题。
+#
+#   若不想开启公钥索取，可改为走 TLS：把 useSSL=false 换成 sslMode=REQUIRED。
+#   二者选其一即可，本模板默认采用前者（更省事，且不依赖服务端开启 SSL）。
+db.url=jdbc:mysql://localhost:3306/real_estate_db?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+db.user=root
+db.password=your_password_here
+
+# ------------------------------------------- 房东联系方式加密密钥（RISK-003）
+# 必须配置，且不要提交到版本库——这个文件本身已 gitignore，所以填在这里是安全的。
+#
+# 生成一个 256 位密钥（AES-256）：
+#     openssl rand -base64 32
+# 把输出整行粘到下面 = 的后面即可。
+#
+# 也可改用环境变量 CONTACT_KEY 或启动参数 -Dcontact.key=<密钥> 覆盖本行。
+#
+# 注意：密钥直接决定库中密文能否解开。更换密钥前必须先做数据迁移
+#      （用旧密钥解密、以新密钥重新加密），否则已有的联系方式会读不出来。
+contact.key=replace_with_a_generated_base64_key

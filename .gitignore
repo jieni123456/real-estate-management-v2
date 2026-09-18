@@ -37,9 +37,23 @@ desktop.ini
 *.bak
 ~$*
 
+# ---- 打包产物（自行打包留档用，不入库）----
+*.zip
+*.rar
+*.7z
+
 # ---- 依赖 jar ----
+# R-004 起依赖改由 Maven 管理（见各模块 pom.xml），仓库里不再存放第三方 jar。
+# 唯一例外是 Maven Wrapper 自带的引导 jar：它是构建入口，必须入库，
+# 否则 clone 下来的人没法执行 ./mvnw。
 *.jar
-!com.realestate/lib/*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# ---- 前端（Vue 3，见 frontend/）----
+node_modules/
+.vite/
+npm-debug.log*
+yarn-error.log*
 
 # ---- 本地配置（含凭据，禁止提交）----
 db.properties

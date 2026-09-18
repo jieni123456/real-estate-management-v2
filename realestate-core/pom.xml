@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.realestate</groupId>
+        <artifactId>realestate-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>realestate-core</artifactId>
+    <name>realestate-core（业务核心）</name>
+    <description>
+        一套业务逻辑，两个界面共用。包含：
+          model       领域模型
+          dao         数据访问（JDBC）
+          service     业务逻辑
+          controller  界面无关的应用服务层：校验编排 + 权限拦截 + 操作日志。
+                      桌面端直接调用它；网页端由 web 模块的 HTTP 接口再包一层。
+          util        纯逻辑工具（配置 / 加密 / 权限 / 校验 / 格式化 / 导出 / 规则）
+                      注意：Theme 与 Icons 属界面资产，刻意留在 desktop 模块。
+
+        硬约束：本模块不依赖任何界面库（Swing / AWT）。桌面端与网页端都依赖它，
+        一旦引入界面依赖，后端服务就会因为缺少图形环境而启动失败。
+    </description>
+
+    <dependencies>
+        <!-- JDBC 驱动：DatabaseUtil 以反射方式加载，故不直接引用其类型 -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- 单元测试（G-016）。
+                 本项目尚未使用 JUnit，自研了一个零依赖的 TestRunner，
+                 入口是 test.AllTests，全部用例都不需要数据库与显示环境。
+                 用 exec 绑定到 test 阶段，使 ./mvnw test 就能跑完整套断言，
+                 断言失败时进程返回非 0，构建随之失败。 -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>run-unit-tests</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>java</executable>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                            <classpathScope>test</classpathScope>
+                            <!-- 让 -DskipTests 对自研测试同样生效（surefire 只认自己的测试） -->
+                            <skip>${skipTests}</skip>
+                            <arguments>
+                                <!-- 不加这几项，中文断言名在 Windows 控制台会显示成乱码 -->
+                                <argument>-Dfile.encoding=UTF-8</argument>
+                                <argument>-Dstdout.encoding=UTF-8</argument>
+                                <argument>-Dstderr.encoding=UTF-8</argument>
+                                <argument>-classpath</argument>
+                                <classpath/>
+                                <argument>test.AllTests</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- 同理：测试由上面的 exec 负责，surefire 留空即可。
+                 将来迁移到 JUnit 5 时，删掉这段 skip 并改用标准测试目录即可。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <skipTests>true</skipTests>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.realestate</groupId>
+        <artifactId>realestate-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>realestate-web</artifactId>
+    <name>realestate-web（Spring Boot 服务端）</name>
+    <description>
+        后端服务，对外提供 HTTP + JSON 接口，供 frontend/ 里的 Vue 3 前端调用。
+
+        基包为 web：Spring Boot 的组件扫描从主类所在包向下进行，
+        因此只会扫描 web.**。core 中的 model / dao / service / controller
+        刻意不带 Spring 注解——它们还要被无框架的桌面端复用，
+        装配到容器里由本模块的一个配置类负责（第 1 阶段做）。
+    </description>
+
+    <dependencies>
+        <!-- 业务核心：两端共用同一套逻辑 -->
+        <dependency>
+            <groupId>com.realestate</groupId>
+            <artifactId>realestate-core</artifactId>
+        </dependency>
+
+        <!-- Web MVC + 内嵌 Tomcat + Jackson（JSON） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- 打成可独立运行的 fat jar：java -jar realestate-web-<版本>.jar
+                 注意：本模块没有继承 spring-boot-starter-parent，
+                 所以 repackage 不会自动绑定，必须显式声明这个 execution。 -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>web.RealEstateWebApplication</mainClass>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>repackage</id>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
