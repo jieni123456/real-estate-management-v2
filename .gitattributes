@@ -1,0 +1,20 @@
+# 换行符规则
+#
+# 背景：本机 core.autocrlf=true，git 默认会把仓库里的 LF 在检出时转成 CRLF。
+# 对多数文件无妨，但对 shell 脚本是致命的——CRLF 会让 shebang（#!/bin/sh）
+# 带上一个多余的 \r，./mvnw 会直接报「bad interpreter」或各种诡异错误。
+# 因此这里显式规定几类文件的换行符，不依赖使用者的 autocrlf 设置。
+
+# Shell 脚本必须是 LF
+mvnw text eol=lf
+*.sh text eol=lf
+
+# Windows 批处理用 CRLF
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# 二进制：不参与换行符转换与文本比较
+*.jar binary
+*.zip binary
+*.png binary
+*.jpg binary
