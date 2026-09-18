@@ -51,7 +51,10 @@ public class AuthInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response,
                              Object handler) {
-        // 跨域预检请求不带 Authorization 头，放行（CORS 配置在第 2 阶段接入）
+        /* 跨域预检（OPTIONS）必须放行：浏览器发预检时不带 Authorization 头，
+         * 若这里要求 token，预检会直接被拒（返回 401），浏览器的表现是
+         * 「跨域被拦」——而真正的原因跟跨域规则本身毫无关系，极难定位。
+         * CORS 规则见 web/config/CorsConfig.java。 */
         if (HttpMethod.OPTIONS.matches(request.getMethod())) {
             return true;
         }

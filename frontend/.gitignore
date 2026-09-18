@@ -1,0 +1,7 @@
+# 依赖与构建产物（根目录的 .gitignore 已覆盖同名规则，这里再声明一次，
+# 让 frontend/ 单独看也是完整的）
+node_modules/
+dist/
+.vite/
+*.local
+npm-debug.log*
