@@ -6,12 +6,16 @@ import java.util.List;
 /**
  * 极简测试框架。对应需求报告 G-016。
  *
- * <p>为什么不用 JUnit：本项目没有 Maven / Gradle，引入 JUnit 需要额外下载 jar、
- * 配置 classpath、区分测试源码根目录，成本明显高于收益。这里用「纯 Java +
- * javac/java 即可运行」的方式实现断言与汇总，零新增依赖，
- * 不需要 IDE 或构建工具就能跑。
+ * <p>为什么不用 JUnit：引入 JUnit 要额外定义测试源码根、写注解、让 surefire 认识它；
+ * 而本项目需要断言的绝大多数是纯函数（加密、校验、匹配、格式化、权限映射），
+ * 一个 {@code check} 加一个 {@code equals} 已经够用，零新增依赖、无头环境直接跑。
  *
- * <p>运行方式见 test/README 或需求报告 G-016 条目。
+ * <p>运行方式（R-004 起已接入 Maven）：{@code ./mvnw test} 会分别在 core 与 web
+ * 模块 fork 进程执行各自的入口，退出码即构建成败。
+ * 单独跑某一个：{@code java -cp <classpath> test.AllTests}。
+ *
+ * <p>将来若迁移到 JUnit 5，core 与 web 的 pom 里各有一段 {@code surefire skipTests}
+ * 配置需要一并删掉。
  */
 public final class TestRunner {
 

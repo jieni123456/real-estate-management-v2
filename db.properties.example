@@ -36,3 +36,17 @@ db.password=your_password_here
 # 注意：密钥直接决定库中密文能否解开。更换密钥前必须先做数据迁移
 #      （用旧密钥解密、以新密钥重新加密），否则已有的联系方式会读不出来。
 contact.key=replace_with_a_generated_base64_key
+
+# ------------------------------------------------- JWT 签名密钥（R-004 阶段 1）
+# 后端签发与校验登录 token 用。缺失或长度不足 32 字节时会拒绝启动——
+# 32 字节是 HMAC-SHA 签名的最低要求，短密钥等于把签名做成摆设。
+# （密钥更长时 jjwt 会自动选用更强的算法：64 字节即 HS512。）
+#
+# 生成：openssl rand -base64 48
+#
+# 同样刻意不提供内置默认值：源码里一旦有默认密钥，等于没有外置。
+# 也可改用环境变量 JWT_SECRET 或启动参数 -Djwt.secret=... 覆盖本行。
+jwt.secret=replace_with_a_generated_base64_key
+
+# token 有效期（分钟）。缺省 120，即 2 小时。
+jwt.expire-minutes=120

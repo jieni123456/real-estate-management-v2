@@ -81,6 +81,22 @@
                     <skipTests>true</skipTests>
                 </configuration>
             </plugin>
+
+            <!-- 额外产出一个 test-jar（含 TestRunner 等测试基础设施），
+                 好让 realestate-web 的测试直接复用，而不必把断言框架抄第二份。
+                 它只在测试期被依赖（web 那边 scope=test），不会进入运行时。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>test-jar</id>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 

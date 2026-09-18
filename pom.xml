@@ -41,6 +41,9 @@
         <flatlaf.version>3.7.2</flatlaf.version>
         <mysql.version>8.0.33</mysql.version>
 
+        <!-- JWT 签发与校验。0.12.x 的资料最全，升级到 0.13 只需改这一处 -->
+        <jjwt.version>0.12.7</jjwt.version>
+
         <!-- 3.5.x 是目前国内企业存量最大的一条线，中文资料最全。
              升级到 4.x 只需改这一处版本号，但需另行核对第三方生态（如接口文档组件）的适配。 -->
         <spring-boot.version>3.5.16</spring-boot.version>

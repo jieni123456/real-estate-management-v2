@@ -732,7 +732,7 @@ Apache NetBeans 等软件实际使用。
         验证过程产生的临时数据（前缀 ZZR003）已全部清理，库中无残留。
 
 ================================================================================
-五、需求 R-004：架构改造（前后端分离）        【状态：实施中（阶段 0 已完成）】
+五、需求 R-004：架构改造（前后端分离）  【状态：实施中（阶段 0、1 已完成）】
 ================================================================================
 
 5.1 背景与动机
@@ -999,6 +999,97 @@ Node.js：已于 2026-09-18 经 winget 安装 LTS 24.19.0（npm 11.17.0），
          至此阶段 0 无遗留项。
 
 （更正：本节初稿曾记「尚未完成：安装 Node.js LTS」，当天即补齐，故不再列为遗留。）
+
+5.12 阶段 1 实施记录（2026-09-18 完成）
+--------------------------------------------------------------------------------
+
+目标：后端打通一条完整链路——登录 + 房屋列表，含 JWT、统一响应、全局异常、连接池。
+
+新增文件（web 模块，13 个）：
+
+    web/security/JwtUtil                 签发与校验；密钥从配置读，不留默认值
+    web/security/ThreadLocalUserHolder   「当前用户」的每请求实现
+    web/security/AuthInterceptor         取 token → 解出用户 → 写入本次请求；结束即清理
+    web/config/CoreIntegrationConfig     core 与 Spring 的接驳点：注入连接池、替换用户来源
+    web/config/WebMvcConfig               把拦截器挂到 /api/**
+    web/dto/ApiResponse                  {code, message, data} 统一外壳
+    web/dto/LoginRequest / LoginResponse / UserVO / HouseVO    接口契约（record）
+    web/exception/ApiException           带状态码的业务异常
+    web/advice/GlobalExceptionHandler    三类异常归口
+    web/controller/AuthApiController     POST login / GET me / POST logout
+    web/controller/HouseApiController    GET /api/houses
+
+core 的改动（三处小改，桌面端行为不变）：
+
+    util/UserHolder + util/Session   把「当前用户存在哪」抽象为可替换策略（G-022）
+    dao/DatabaseUtil                 增加 setDataSource(DataSource)；未注入时仍走 DriverManager
+    model/User                       增加 User.of(username, role)，避免每个请求白算一次口令哈希
+
+接口一览：
+
+    GET  /api/health          放行，无需 token
+    POST /api/auth/login      放行；成功返回 token + 角色 + 有效期
+    GET  /api/auth/me         需 token
+    POST /api/auth/logout     需 token
+    GET  /api/houses          需 token
+
+实测响应对照（每一种都实际跑过）：
+
+    POST /api/auth/login   带 token 且库正常   → 200，data 里 6 条房屋
+    GET  /api/houses       不带 token          → 401 未登录：请在请求头带上 Authorization…
+    POST /api/auth/login   用户名或口令为空    → 400 请输入用户名和密码
+    POST /api/auth/login   口令错误            → 401 用户名或密码错误
+    POST /api/auth/login   请求体不是 JSON     → 400 请求体不是合法的 JSON，或字段类型不匹配
+    GET  /api/houses       改 payload 或签名    → 401 登录状态已失效（token 无效或已过期）
+    POST /api/auth/login   数据库连不上        → 503 无法连接数据库。请确认 MySQL 已启动…
+
+与方案 5.6 第 3 条的差异：连接池已接入，但 @Transactional 暂未采用。
+
+    原方案：手写的 DatabaseUtil.getConnection 换成 HikariCP + Spring 声明式事务，
+            替换现有的手写 setAutoCommit 事务。
+    实施：连接池部分照做；事务仍由 core 的 DAO 自己管（setAutoCommit(false) + commit/rollback）。
+
+    原因：@Transactional 要生效，参与事务的取连接动作必须经过 Spring
+          （DataSourceUtils.getConnection 或 JdbcTemplate）——Spring 把「本次事务的连接」
+          绑在 TransactionSynchronizationManager 上，直接调 dataSource.getConnection()
+          会另取一条，事务管不到它。而本项目的 DAO 是「自己取连接、自己关连接」
+          （try-with-resources），core 又刻意不依赖任何框架。若让 DatabaseUtil 去调
+          DataSourceUtils，等于把 core 绑到 Spring 上——桌面端也得跟着经 Spring 启动，
+          与「一套 core 支撑两个界面」的前提直接冲突。
+
+    由此暴露的缺口另行登记为 G-021，并给出两条可选路径。
+
+两点安全上的如实说明：
+
+    1. 退出登录做不到让 token 立刻失效。JWT 是无状态的，服务端没存会话，该接口只记
+       一条日志并清掉本次请求的当前用户；真正的登出是客户端丢弃 token、等它自然过期。
+       要服务端强制失效，需引入黑名单或改用有状态会话。
+    2. 房屋列表把房东联系电话一并返回（与桌面端显示一致）。若将来对外提供服务，
+       应改为脱敏或按权限返回。
+
+验证（2026-09-18）：
+
+    构建    ./mvnw clean package 三模块全部 SUCCESS
+    单测    core 206 项 + web 20 项（新增 JwtUtil 测试）= 226 项，全部通过。
+            web 模块通过 core 的 test-jar 复用 TestRunner，断言框架只写一份。
+    端到端  用 curl 走完整链路，上表七种情形逐一核对通过。
+    回归    桌面版用可执行 jar 启动正常（0 异常，正常建表与读数据）——本轮改了 core 的
+            Session / User / DatabaseUtil，必须确认桌面端未受影响。
+    密钥守卫 故意给一个过短的 jwt.secret 启动后端：进程以退出码 1 拒绝启动，
+            并打印三种配置方式与生成命令（不留内置默认值这条规矩确实生效）。
+    数据源  故意把 db.url 指向错误端口启动：服务仍能起来（连接池刻意延迟连接，
+            数据库暂时不可用不该让服务起不来），访问需要读库的接口返回 503 与
+            「无法连接数据库」的说明，而不是笼统的 500——桌面端与网页端在
+            「分不清原因」这件事上是同一个毛病，这里一并避免了。
+
+排错记录（两处都是我自己的验证写法有误，产品行为正确，如实记下）：
+
+    · 「篡改 token 仍返回 200」——我改的是签名 Base64 的最后一个字符。Base64 末字符带
+      无效位，改后解码出的 64 字节完全相同，本质上还是同一个签名，并非校验失效。
+      改成「改 payload」与「改签名中段」后，均正确返回 401。
+    · 「密钥过短仍能启动」——我把 -Djwt.secret=short 写在了 -jar 之后，那个位置是程序
+      参数而不是 JVM 参数，所以没生效。把 -D 提到 -jar 之前后，确实以退出码 1 拒绝启动。
+
 
 ================================================================================
 六、既存缺陷与风险
@@ -1294,8 +1385,9 @@ RISK-004  git 代理端口硬耦合
     [x]  R-004 阶段 0  环境与骨架（2026-09-18 完成：引入 Maven Wrapper 3.3.4、
                        按模块搬迁代码、桌面端改经 Maven 运行且实测仍可运行、
                        单元测试接入构建、经 winget 安装 Node.js LTS 24.19.0）
-    [ ]  R-004 阶段 1  后端打通一条链路：登录 + 房屋列表（JWT、统一响应、
-                       全局异常、连接池）
+    [x]  R-004 阶段 1  后端打通一条链路：登录 + 房屋列表（2026-09-18 完成：
+                       JWT、统一响应、全局异常、连接池。@Transactional 未采用，
+                       原因与替代路径见 5.12 与 G-021）
     [ ]  R-004 阶段 2  前端打通同一条链路：登录页 + 房屋列表页（CORS、token 拦截器）
     [ ]  R-004 阶段 3  房屋的增 / 改 / 删 / 导出 + 权限控制
     [ ]  R-004 阶段 4  客户 + 带看记录模块
@@ -1819,6 +1911,38 @@ G-020  已租出的房源仍可登记带看                             【已�
       先出方案再实施的情形区分开。
 
 --------------------------------------------------------------------------------
+G-021  跨 DAO 的业务事务边界缺失                             【已登记 2026-09-18】
+--------------------------------------------------------------------------------
+
+来源：R-004 阶段 1 实施时发现。方案 5.6 第 3 条原计划「连接池 + Spring 声明式事务」，
+      连接池已接入，但 @Transactional 未能采用——原因见 5.12，这里登记由此暴露的缺口。
+
+现状：事务边界只在「一次复合写」内部成立，例如新增房屋 = 写房东 + 写房屋
+      （HouseDAO 自己 setAutoCommit(false) 包起来，G-010）。跨多个 DAO 调用的
+      业务事务目前没有：譬如「新增客户并同时登记一条带看」这类操作，若第二步失败，
+      第一步不会回滚。
+
+影响：现阶段没有真正需要跨 DAO 事务的用例（每个业务操作都只写一组相关表），
+      故尚未造成实际问题；但后续阶段（房屋增删改、批量操作、带看模块）
+      很可能出现这类操作，届时会变成真实风险。
+
+建议（两条路径，择一）：
+
+    路径 ①  core 的 DAO 改为「连接由外部传入」——已有现成先例：
+            HouseDAO.markRented(Connection, ...) 就是这么写的。由调用方控制边界：
+            web 层用 Spring 的 TransactionTemplate，桌面端用一个极小的手写模板。
+            优点：core 保持框架无关，事务边界显式可见、可测试。
+            代价：要改若干 DAO 方法签名，调用点不少。
+
+    路径 ②  core 的 dao 层改用 JdbcTemplate，core 依赖 spring-jdbc。
+            换来 @Transactional 注解，写法最简洁。
+            代价：core 不再框架无关，桌面端也得经 Spring 启动——
+            与「一套 core 支撑两个界面」的初衷冲突。
+
+    倾向：路径 ①。本项目最值得讲的一点正是「同一套业务逻辑支撑两个界面」，
+          为省一个注解而放弃它不划算。
+
+--------------------------------------------------------------------------------
 执行顺序（已确认：G-006 搁置，其余按本顺序推进）
 --------------------------------------------------------------------------------
 
@@ -2232,6 +2356,26 @@ G-020  已租出的房源仍可登记带看                             【已�
              mvnw 的换行符（本机 autocrlf=true 会让 shebang 失效），并在索引中
              为其补上可执行位（本机 core.filemode 关闭，默认会按 100644 入库，
              导致 Linux / macOS 上无法直接执行）。
+
+2026-09-18   阶段 1（后端打通一条链路）实施完成。新增 web 模块 13 个文件：JWT 签发与校验、
+             ThreadLocal 版「当前用户」、登录拦截器、core 与 Spring 的接驳配置、
+             统一响应外壳、全局异常处理、四个 DTO 与两个接口控制器。
+             core 三处小改：UserHolder（当前用户改为可替换策略）、DatabaseUtil.setDataSource、
+             User.of。接口：POST /api/auth/login、GET /api/auth/me、POST /api/auth/logout、
+             GET /api/houses；GET /api/health 保持放行。
+
+             与方案 5.6 第 3 条的差异：连接池已接入，但 @Transactional 未采用——
+             Spring 的声明式事务要求取连接经过 DataSourceUtils，而本项目 DAO 是
+             「自己取连接、自己关连接」，core 又刻意不依赖框架；要上注解就得把 core
+             绑到 Spring 上，与「一套 core 支撑两个界面」冲突。原因与两条替代路径
+             记于 5.12，并新登记缺口 G-021（跨 DAO 的业务事务边界缺失）。
+
+             新增 web 模块单元测试（JwtUtil 20 项，通过 core 的 test-jar 复用 TestRunner），
+             全套断言 226 项通过。端到端用 curl 核对七种情形（含篡改 token 被拒、
+             数据库不可用映射为 503）；桌面版回归运行正常。
+
+             两处排错如实记于 5.12：改 Base64 末字符不等于篡改签名（无效位）、
+             -D 参数写在 -jar 之后不生效——两次都是我的验证写法有误，产品行为正确。
 
 ================================================================================
                                   —— 文件结束 ——

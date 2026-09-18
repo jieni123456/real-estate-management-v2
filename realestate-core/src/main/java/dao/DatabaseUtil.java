@@ -3,6 +3,7 @@ package dao;
 import util.AppConfig;
 import util.SecurityUtil;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -70,7 +71,55 @@ public class DatabaseUtil {
         }
     }
 
+    /**
+     * 由外层注入的连接池。为 null 时回退到 DriverManager 直连。
+     *
+     * <p>core 只认 {@link javax.sql.DataSource}——那是 JDK 自带的接口，所以 Web 端
+     * 可以把 HikariCP 塞进来，而 core 不必依赖任何连接池或框架；桌面端不注入，
+     * 行为与改造前完全一致。对应需求报告 R-004 / G-021。
+     */
+    private static volatile DataSource dataSource;
+
+    /**
+     * 注入连接池。由 Web 端在启动时调用一次。
+     *
+     * <p>DAO 全部通过 {@link #getConnection()} 取连接，因此只要换掉这里的来源，
+     * 上层一行都不用改——这也是当初把取连接的动作集中在本类的原因。
+     */
+    public static void setDataSource(DataSource ds) {
+        dataSource = ds;
+        System.out.println(ds == null
+                ? "连接来源：DriverManager 直连（未注入连接池）"
+                : "连接来源：已注入连接池 " + ds.getClass().getSimpleName());
+    }
+
+    /**
+     * 已解析的连接串（已按 系统属性 → 环境变量 → db.properties → 内置默认值 取好）。
+     *
+     * <p>供 Web 端构造连接池时复用，避免它自己再读一遍配置、或把默认连接串抄第二份。
+     */
+    public static String configuredUrl() {
+        return DB_URL;
+    }
+
+    /** 已解析的数据库账号（已按 系统属性 → 环境变量 → db.properties → 默认值 取好）。
+     *  供 Web 端构造连接池时复用，避免它自己再读一遍配置。 */
+    public static String configuredUser() {
+        return DB_USER;
+    }
+
+    /** 已解析的数据库口令。仅供构造连接池使用：不打印、不写日志 */
+    public static String configuredPassword() {
+        return DB_PASSWORD;
+    }
+
     public static Connection getConnection() throws SQLException {
+        DataSource pooled = dataSource;
+        if (pooled != null) {
+            // 走连接池时不再逐次打印——池的意义就是复用连接，逐次打印只会淹没日志
+            return pooled.getConnection();
+        }
+
         System.out.println("连接数据库: " + DB_URL + " (用户: " + DB_USER + ")");
         try {
             return DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);

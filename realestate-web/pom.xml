@@ -34,10 +34,88 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+
+        <!-- 连接池（自带 HikariCP，版本由 Spring Boot 统一管理）。
+             本模块只取它的连接池：DAO 仍走 core 的 DatabaseUtil，
+             由下面 web.config.CoreIntegrationConfig 把池注入进去。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+
+        <!-- JWT。api 参与编译，impl 与 jackson 只在运行期需要，故 scope=runtime -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>${jjwt.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- core 的测试基础设施（TestRunner）。
+             用 test-jar 类型取 core 的测试包，避免把断言框架在本模块抄第二份。
+             只在测试期需要，故 scope=test —— 它不会进入运行时依赖。 -->
+        <dependency>
+            <groupId>com.realestate</groupId>
+            <artifactId>realestate-core</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <!-- 单元测试：与 core 同一套做法，入口是 webtest.WebAllTests。
+                 断言内容主要是 JWT 的签发与校验（签名被改必须拒绝）——
+                 这类安全相关的行为最值得用断言锁住。 -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>run-unit-tests</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>java</executable>
+                            <workingDirectory>${project.basedir}</workingDirectory>
+                            <classpathScope>test</classpathScope>
+                            <skip>${skipTests}</skip>
+                            <arguments>
+                                <argument>-Dfile.encoding=UTF-8</argument>
+                                <argument>-Dstdout.encoding=UTF-8</argument>
+                                <argument>-Dstderr.encoding=UTF-8</argument>
+                                <argument>-classpath</argument>
+                                <classpath/>
+                                <argument>webtest.WebAllTests</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- 同 core：测试由 exec 负责，surefire 留空 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <skipTests>true</skipTests>
+                </configuration>
+            </plugin>
+
             <!-- 打成可独立运行的 fat jar：java -jar realestate-web-<版本>.jar
                  注意：本模块没有继承 spring-boot-starter-parent，
                  所以 repackage 不会自动绑定，必须显式声明这个 execution。 -->
