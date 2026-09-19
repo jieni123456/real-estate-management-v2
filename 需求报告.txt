@@ -1427,6 +1427,49 @@ utils/permissions.js 增加带看结果常量；utils/format.js 增加 nowDateTi
 立刻 revoke 属于潜在竞态；保留后更稳妥，代价可忽略（几十 KB 内存多留一秒）。
 
 
+5.16 日常启动方式（2026-09-19 补齐）
+--------------------------------------------------------------------------------
+
+此前各阶段只记录了「怎么验证」，没记录「平时怎么启动」——导致用户在自己的终端里
+照旧习惯敲命令时撞上 BUG-008。此处补齐，作为唯一权威说法。
+
+【一键启动】双击仓库根目录的 start-dev.cmd
+    它会检查 JAVA_HOME 与前端依赖，弹出两个窗口分别启动后端与前端，
+    等两个服务都就绪后自动打开浏览器（后端要编译，比前端慢十几秒，
+    因此必须等它对，否则页面打开时登录会没反应）。
+    脚本自身那个窗口可以随时关闭，不影响已启动的服务。
+
+【手动启动】开两个终端（PowerShell / cmd 均可）
+
+    终端 1 —— 后端：
+        cd "E:\二手房中介管理系统"
+        .\mvnw -pl realestate-web -am spring-boot:run
+
+    终端 2 —— 前端：
+        cd "E:\二手房中介管理系统\frontend"
+        npm run dev
+
+    浏览器打开 http://localhost:5173
+
+    ⚠️ 后端命令里的 -am 不可省：不加它，realestate-core 只能从本地仓库取，
+       而本地仓库里的 jar 是上一次 install 时的样子 —— core 改过代码却没
+       install，就会报「找不到符号」（BUG-008）。加 -am 后 core 按源码构建。
+
+【其余几条】
+
+    · 后端只提供 JSON，不提供页面。直接开 http://localhost:8080 会看到 404，
+      这不是故障；想确认它活着可以开 http://localhost:8080/api/health。
+    · 本地运行不需要 VPN。VPN 只在推送 GitHub 时用得上。
+    · 前端依赖已装好，日常不必重复 npm install。换机器或依赖变化时才需要，
+      并建议带国内镜像：npm install --registry=https://registry.npmmirror.com
+    · 在 IDEA 里运行后端最省事（点 RealEstateWebApplication 旁的绿色三角）：
+      IDEA 按模块依赖解析，本就不存在本地仓库陈旧的问题。
+    · 想跑桌面版：先 `mvnw -DskipTests install`，再
+      `mvnw -pl realestate-desktop exec:java`；
+      或直接 `java -jar realestate-desktop\target\realestate-desktop-1.0.0-SNAPSHOT-jar-with-dependencies.jar`
+      （fat jar 自带依赖，无需 install）。
+
+
 ================================================================================
 六、既存缺陷与风险
 ================================================================================
@@ -1632,6 +1675,70 @@ BUG-007  父 POM 缺 -parameters，所有带路径变量的接口报 500        
 教训：自己写父 POM，等于接管了官方父 POM 替你做的所有默认设置。
       「没有继承 spring-boot-starter-parent」应当是一张需要逐项对照的清单，
       而不是一次性的选型决定。
+
+--------------------------------------------------------------------------------
+BUG-008  用 -pl 运行后端时，本地仓库里的 core 陈旧导致编译失败      【已修复 2026-09-19】
+--------------------------------------------------------------------------------
+
+现象：用户在自己机器上执行文档给出的启动命令
+
+        .\mvnw -pl realestate-web spring-boot:run
+
+      报 13 个编译错误，全部是「找不到符号」，且都指向 core 里新增的东西：
+
+        util.CustomerQuery / util.HouseQuery / util.ViewingQuery   （阶段 3、4 新增的类）
+        CsvExporter.buildWithBom(...)                              （阶段 3 新增的方法）
+        Formats.parseDateTimeWithSeconds / DATE_TIME_SECONDS_PATTERN
+        Formats.dateTimeWithSeconds(...)                           （阶段 4 新增）
+        Result.getKind()                                           （阶段 3 新增）
+
+成因：`-pl realestate-web` 只把 web 放进 reactor，它依赖的 realestate-core 就只能从
+      本地仓库（~/.m2）取 —— 而本地仓库里的那个 jar 是上一次 `install` 时的样子。
+      本项目上一次 install 是在阶段 1（2026-09-18 18:23），此后 core 在阶段 3、4
+      都改过，于是本地仓库里的 core 缺了这些新类与新方法。
+
+      属阶段 0 引入的隐性前提（与 BUG-007 同源，都是「自己写父 POM / 自己定流程」
+      留下的坑）：文档里给的运行命令，依赖了一个从未被明说、也不会被自动维护的状态
+      —— 本地仓库的新鲜度。
+
+为什么此前一直没暴露：阶段 0、1、2 的验证都是先跑全量 `clean package`（整个 reactor
+      一起构建，core 从源码编译），再用产物 jar 启动；而 jar 是自包含的。
+      也就是说：我验证的是 jar，用户执行的是 `-pl ... spring-boot:run` ——
+      两条路径对本地仓库的依赖程度不同。这又是一次「验证入口没复刻」的失误
+      （本项目第四次：BUG-003 构造顺序、阶段 2 输入框写入、mvnw/npm 终端差异）。
+
+修复：分两层。
+
+      ① 结构性修复（根治）：父 POM 把 spring-boot-maven-plugin 配置为 skip=true，
+         web 模块覆盖为 skip=false。这样 reactor 里其它模块上的 spring-boot:run
+         会被跳过，于是
+
+           .\mvnw -pl realestate-web -am spring-boot:run
+
+         成为可用写法。加了 -am 之后 core 被纳入 reactor、按源码构建，
+         从此不依赖本地仓库的新鲜度。
+
+         为什么需要这个 skip：不加的话，-am 会把父 POM 与 core 一并纳入，
+         而 spring-boot:run 会在 reactor 里每个模块上各执行一遍，它们没有主类，
+         直接报「Unable to find a suitable main class」——这条已实测确认。
+
+      ② 流程修复：一键启动脚本 start-dev.cmd 改用上述带 -am 的命令；
+         并补上「等后端就绪再打开浏览器」这一步（后端要经过 Maven 启动 + 编译 core
+         + 启动 Spring 容器，比 Vite 慢十几秒；不等就打开页面，用户会撞上
+         「登录没反应」，而那只是后端还没起来）。
+
+      同时执行了一次 `-DskipTests install`（实测 9 秒）刷新本地仓库，
+      让原先那条不带 -am 的命令也能正常工作 —— 用户很可能仍会照着旧习惯敲它。
+
+验证：三种走法实测均可启动（健康检查均通过、Tomcat 均 1.5~1.7 秒起完）：
+        · Git Bash：./mvnw -pl realestate-web -am spring-boot:run
+        · cmd 入口：mvnw.cmd -pl realestate-web -am spring-boot:run
+        · 原命令：  ./mvnw -pl realestate-web spring-boot:run（install 之后）
+      并确认 `clean package` 未受影响：BUILD SUCCESS、单测 core 260 + web 22 全过、
+      web 的 repackage 照常产出 26M fat jar、desktop 的 5.1M 可执行 jar 照常生成。
+
+教训：凡是「依赖某个外部状态的新鲜度」的流程，都必须由构建或脚本自动保证，
+      不能指望人记住。 本例里那个外部状态是本地仓库；同类还有「先 install 再 -pl」。
 
 --------------------------------------------------------------------------------
 RISK-001  源码硬编码数据库账号密码                     【已修复 2026-09-16】
@@ -2909,9 +3016,24 @@ G-023  房屋ID 无格式约束，含「/」时会破坏路径变量接口      
              CDP 的下载路径在 Windows 上必须用反斜杠（正斜杠会让浏览器
              「开始下载后立即取消」）。
 
-             一处预防性改动如实说明：download.js 的 revokeObjectURL 改为延后
-             1 秒。最终查明根因在测试侧、该改动并非必需，也未能解决当时的问题；
-             予以保留是因为它本就遵循规范建议（等下载开始后再释放），更稳妥。
+              一处预防性改动如实说明：download.js 的 revokeObjectURL 改为延后
+              1 秒。最终查明根因在测试侧、该改动并非必需，也未能解决当时的问题；
+              予以保留是因为它本就遵循规范建议（等下载开始后再释放），更稳妥。
+
+================================================================================
+2026-09-19   修复 BUG-008（用 -pl 运行后端时本地仓库的 core 陈旧导致编译失败）。
+
+             父 POM 将 spring-boot-maven-plugin 设为默认跳过、web 模块覆盖为不跳过，
+             使 `-pl realestate-web -am spring-boot:run` 成为可用写法 ——
+             加了 -am 后 core 按源码构建，不再依赖本地仓库的新鲜度。
+             start-dev.cmd 改用该命令，并补上「等后端就绪再打开浏览器」。
+             另执行一次 -DskipTests install（9 秒）刷新本地仓库，
+             使原命令（不带 -am）同样可用。
+
+             验证：三种走法（Git Bash / cmd 入口 / 原命令）实测均可启动；
+             clean package 与全部单测未受影响，两个可执行 jar 照常产出。
+
+             用户同时决定：阶段 4 起不推远端，只保留本地提交。
 
 ================================================================================
                                   —— 文件结束 ——

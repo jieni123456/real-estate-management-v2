@@ -138,6 +138,30 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+
+        <!-- spring-boot-maven-plugin 在这里「默认跳过」，只有 web 模块显式覆盖为不跳过。
+             这不是为了打包（打包由各模块自己的配置决定），而是为了让
+             `-pl realestate-web -am spring-boot:run` 这种写法能成立：
+
+             为什么需要它：`-pl <模块>` 只把选中的模块放进 reactor，该模块依赖的
+             realestate-core 就只能从**本地仓库**取 —— 而本地仓库里的那个 jar
+             是上一次 `install` 时的样子。core 改了代码却没重新 install，
+             就会出现「明明编译过、却报找不到类」的怪事（本项目已踩过一次）。
+             加上 `-am` 能把 core 一并放进 reactor，从源码编译，不再依赖本地仓库。
+
+             但 `-am` 会把父 POM 和 core 也纳入，而 spring-boot:run 会在
+             reactor 里**每个**模块上执行一遍 —— 它们没有主类，直接报
+             「Unable to find a suitable main class」。所以这里统一跳过，
+             只在 web 模块里打开。 -->
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
     </build>
 
 </project>

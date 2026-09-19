@@ -118,11 +118,15 @@
 
             <!-- 打成可独立运行的 fat jar：java -jar realestate-web-<版本>.jar
                  注意：本模块没有继承 spring-boot-starter-parent，
-                 所以 repackage 不会自动绑定，必须显式声明这个 execution。 -->
+                 所以 repackage 不会自动绑定，必须显式声明这个 execution。
+
+                 skip=false 覆盖父 POM 里「默认跳过」的设置（原因见父 POM 注释）：
+                 本模块是唯一真正需要 spring-boot:run / repackage 的模块。 -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
+                    <skip>false</skip>
                     <mainClass>web.RealEstateWebApplication</mainClass>
                 </configuration>
                 <executions>
