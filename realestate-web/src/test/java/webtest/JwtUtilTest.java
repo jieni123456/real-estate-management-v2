@@ -73,9 +73,15 @@ public final class JwtUtilTest {
             t.isNull("还原出的用户不带口令哈希", emptyToNull(user.getEncryptedPassword()));
         });
 
-        // 同一用户两次签发应当不同：载荷里带了签发时间（iat），每次都不一样
+        /* 同一用户两次签发必须不同。
+         * 注意：光靠 iat 是不够的 —— 它的精度只到「秒」，同一秒内签发两次会逐字节相同。
+         * 真正保证唯一性的是随机 jti，这条断言正是在钉住这个行为
+         * （原先这里注释写「带了 iat 所以每次都不一样」，那个前提是错的，
+         * 只是此前一直侥幸没在同一秒内连签两次才没暴露）。 */
         t.check("同一用户两次签发的 token 不相同",
                 !token.equals(jwtUtil.issue(User.of("admin", "ADMIN"))));
+        t.check("payload 里带签发时间 iat", decodePayload(token).contains("\"iat\""));
+        t.check("payload 里带唯一票号 jti", decodePayload(token).contains("\"jti\""));
     }
 
     private static void runTamperChecks(TestRunner t, JwtUtil jwtUtil) {

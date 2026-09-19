@@ -50,6 +50,13 @@ public final class ExportTest {
         t.equals("null 行集返回空串", "", CsvExporter.build(null));
         t.check("日期后缀为 8 位数字", CsvExporter.today().matches("\\d{8}"));
 
+        // Web 端导出下载用带 BOM 的版本；BOM 缺失会让 Excel 把中文显示成乱码
+        String withBom = CsvExporter.buildWithBom(rows);
+        t.check("带 BOM 的版本以 U+FEFF 开头", withBom.startsWith("\uFEFF"));
+        t.equals("带 BOM 的版本只多那一个字符",
+                csv, withBom.substring(1));
+        t.equals("空行集带 BOM 时只剩 BOM 本身", "\uFEFF", CsvExporter.buildWithBom(null));
+
         t.suite("DataAccessException · 异常归类（G-012）");
 
         t.equals("MySQL 1062 归为重复键",

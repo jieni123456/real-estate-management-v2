@@ -30,6 +30,17 @@ public final class CsvExporter {
     private CsvExporter() {
     }
 
+    /**
+     * 把行数据拼成完整 CSV 文本（<b>含 BOM</b>）。
+     *
+     * <p>Web 端导出下载时用它：HTTP 响应没有「写文件」这一步，直接要最终文本。
+     * 有了这个方法，BOM 这件事就只在<u>本类</u>里定义一次，
+     * 不会出现「桌面端加了 BOM、网页端忘了加」导致 Excel 打开乱码的偏差。
+     */
+    public static String buildWithBom(List<String[]> rows) {
+        return BOM + build(rows);
+    }
+
     /** 把行数据拼成 CSV 文本（不含 BOM） */
     public static String build(List<String[]> rows) {
         StringBuilder builder = new StringBuilder();
@@ -77,7 +88,7 @@ public final class CsvExporter {
      * @throws IOException 写失败（磁盘只读、路径不存在、文件被占用等）
      */
     public static void write(Path file, List<String[]> rows) throws IOException {
-        Files.write(file, (BOM + build(rows)).getBytes(StandardCharsets.UTF_8));
+        Files.write(file, buildWithBom(rows).getBytes(StandardCharsets.UTF_8));
     }
 
     /** 默认文件名用的日期后缀，例如 20260916 */

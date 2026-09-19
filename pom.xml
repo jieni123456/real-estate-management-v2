@@ -97,6 +97,19 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>${maven-compiler-plugin.version}</version>
+                    <configuration>
+                        <!-- 必须加 -parameters：Java 字节码默认不保留方法参数名，
+                             而 Spring MVC 解析 @PathVariable / @RequestParam 时正是靠
+                             反射读参数名（注解里没显式写名字的那种写法）。
+                             少了它，所有带路径变量或查询参数的接口都会抛
+                             IllegalArgumentException: Name for argument ... not specified，
+                             表现为 500 —— 而且编译期毫无征兆。
+
+                             别人的 Spring Boot 项目不踩这个坑，是因为继承
+                             spring-boot-starter-parent 时它默认加了这个标志；
+                             本项目为了统一管版本自己写了父 POM，所以要自己补上。 -->
+                        <parameters>true</parameters>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

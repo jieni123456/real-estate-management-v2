@@ -1,26 +1,71 @@
 package web.controller;
 
 import controller.HouseController;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import util.CsvExporter;
+import util.Formats;
+import util.HouseQuery;
+import util.Permissions;
+import util.Result;
+import util.Session;
 import web.dto.ApiResponse;
+import web.dto.DeletionInfoVO;
+import web.dto.HouseSaveRequest;
 import web.dto.HouseVO;
+import web.dto.LandlordVO;
+import web.exception.ApiException;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 房屋接口。对应需求报告 R-004 / G-024。
+ * 房屋接口。对应需求报告 R-004 阶段 3。
  *
- * <p>本阶段只做「列表」这一条——它的目的是把整条链路跑通：请求带 token → 拦截器解出
- * 用户 → 调 core 的 {@link HouseController} → 转成 DTO → 统一外壳返回。
- * 增 / 改 / 删 / 导出放在阶段 3，届时照这个模式扩展即可。
+ * <p>本类只做「HTTP 语义」这一层——取参、判空、把 core 的结果翻译成响应体与状态码。
+ * 校验、权限、日志留痕全都在 core 的 {@link HouseController} 里，桌面端调的是同一批
+ * 方法，因此两个界面不会出现两套规则。这是双轨并存的前提。
+ *
+ * <p><b>失败原因 → HTTP 状态码</b>（在 {@link #ensureSuccess} 里统一翻译）：
+ *
+ * <pre>
+ *   Result.Kind.VALIDATION / OTHER  →  400  参数或业务规则不通过
+ *   Result.Kind.CONFLICT            →  409  ID 已被占用
+ *   Result.Kind.NOT_FOUND           →  404  记录不存在（可能已被他人删除）
+ *   Result.Kind.PERMISSION          →  403  已登录但权限不足
+ * </pre>
+ *
+ * <p>所有失败都回 {@code {code, message, data}} 的统一外壳，{@code code} 与状态码一致。
+ * 数据库层面的异常（连不上、约束冲突）不在这里捕获，由 {@code GlobalExceptionHandler}
+ * 统一归类——「读不出来」与「没数据」必须区分开。
  */
 @RestController
 @RequestMapping("/api/houses")
 public class HouseApiController {
 
+    /** 导出文件的表头。顺序与界面表格、桌面端导出一致 */
+    private static final String[] CSV_HEADER =
+            {"ID", "户型", "面积(m²)", "地址", "状态", "房东ID", "房东姓名", "房东电话"};
+
+    private static final String CSV_CONTENT_TYPE = "text/csv;charset=UTF-8";
+
     private final HouseController houseController = new HouseController();
+
+    // ---------------------------------------------------------------- 查询
 
     /**
      * 房屋列表。
@@ -31,9 +76,210 @@ public class HouseApiController {
      */
     @GetMapping
     public ApiResponse<List<HouseVO>> list() {
-        List<HouseVO> houses = houseController.getAllHouses().stream()
+        requireView();
+        return ApiResponse.ok(readAll());
+    }
+
+    /** 房东列表，供「新增 / 编辑房屋」对话框的下拉选择使用（G-007） */
+    @GetMapping("/landlords")
+    public ApiResponse<List<LandlordVO>> landlords() {
+        requireView();
+        List<LandlordVO> landlords = houseController.getAllLandlords().stream()
+                .map(LandlordVO::from)
+                .toList();
+        return ApiResponse.ok(landlords);
+    }
+
+    /**
+     * 删除前的后果预告（G-008 / G-018）。
+     *
+     * <p>删除会连带删掉带看记录，也可能把房东一并清理掉——两件事都不能是隐形的，
+     * 所以确认框弹出前先问一次这里。
+     */
+    @GetMapping("/{id}/deletion-info")
+    public ApiResponse<DeletionInfoVO> deletionInfo(@PathVariable String id) {
+        requireView();
+
+        HouseVO target = readAll().stream()
+                .filter(house -> house.id().equals(id))
+                .findFirst()
+                .orElseThrow(() -> ApiException.notFound("房屋「" + id + "」不存在，可能已被删除"));
+
+        int viewingCount = houseController.countViewings(id);
+        int landlordHouseCount = houseController.countHousesByLandlord(target.landlordId());
+
+        return ApiResponse.ok(new DeletionInfoVO(
+                id,
+                viewingCount,
+                target.landlordId(),
+                target.landlordName(),
+                // 只有这一套房时，删完房东就成孤儿了——G-018 会在同一事务里清掉它
+                landlordHouseCount == 1,
+                landlordHouseCount));
+    }
+
+    /**
+     * 导出 CSV。对应需求报告 G-014。
+     *
+     * <p><b>为什么带 keyword / status 两个参数：</b>导出的必须是「屏幕上看到的那几行」。
+     * 做法是服务端按同样的条件重算一遍，而不是让前端把行数据传回来——这样筛选规则
+     * 只有 {@link HouseQuery} 一份实现，不会出现「屏幕 3 行、文件 5 行」的偏差。
+     *
+     * <p>文件以 UTF-8 + BOM 写出：少了 BOM，Excel 双击打开会把中文显示成乱码。
+     */
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> export(@RequestParam(required = false) String keyword,
+                                        @RequestParam(required = false) String status) {
+        requireView();
+
+        List<HouseVO> rows = HouseQuery.filter(houseController.getAllHouses(), keyword, status)
+                .stream()
                 .map(HouseVO::from)
                 .toList();
-        return ApiResponse.ok(houses);
+
+        String fileName = "房屋列表_" + CsvExporter.today() + ".csv";
+        byte[] body = CsvExporter.buildWithBom(toRows(rows)).getBytes(StandardCharsets.UTF_8);
+
+        // 导出也要留痕（G-017）
+        houseController.recordExport(rows.size(), fileName);
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(CSV_CONTENT_TYPE))
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(fileName))
+                .body(body);
+    }
+
+    // ---------------------------------------------------------------- 写入
+
+    /**
+     * 新增房屋。
+     *
+     * <p>ID 已存在时返回 <b>409</b>，而不是静默覆盖原记录——这是 G-001 那条修复在
+     * HTTP 层面的表达。新增与编辑分成两个接口，正是为了让「冲突」成为一个明确的错误，
+     * 而不是一个「看起来成功了」的结果。
+     */
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<Void> create(@RequestBody HouseSaveRequest request) {
+        Result result = houseController.addHouse(
+                request.id(), request.type(), area(request), request.address(),
+                request.landlordId(), request.landlordName(), request.landlordContact(),
+                request.status());
+
+        ensureSuccess(result);
+        return ApiResponse.ok(result.getMessage(), null);
+    }
+
+    /**
+     * 编辑房屋。
+     *
+     * <p>房屋ID 不可修改，以路径上的为准。请求体里若也带了 id 且与路径不一致，
+     * 直接判为客户端错误——与其猜「以哪个为准」，不如让这种矛盾当场暴露。
+     */
+    @PutMapping("/{id}")
+    public ApiResponse<Void> update(@PathVariable String id,
+                                    @RequestBody HouseSaveRequest request) {
+        if (isNotBlank(request.id()) && !id.trim().equals(request.id().trim())) {
+            throw ApiException.badRequest(
+                    "路径中的房屋ID「" + id + "」与请求体中的「" + request.id() + "」不一致");
+        }
+
+        Result result = houseController.updateHouse(
+                id, request.type(), area(request), request.address(),
+                request.landlordId(), request.landlordName(), request.landlordContact(),
+                request.status());
+
+        ensureSuccess(result);
+        return ApiResponse.ok(result.getMessage(), null);
+    }
+
+    /**
+     * 删除房屋。需 ADMIN 权限（R-001：AGENT 可增可查但不能删）。
+     *
+     * <p>权限判断在 core 的 {@code deleteHouse} 里，返回 {@code Kind.PERMISSION}，
+     * 这里翻成 403。界面上的置灰只是体验，这里才是真正拦住的地方。
+     */
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(@PathVariable String id) {
+        Result result = houseController.deleteHouse(id);
+        ensureSuccess(result);
+        return ApiResponse.ok(result.getMessage(), null);
+    }
+
+    // ---------------------------------------------------------------- 内部
+
+    private List<HouseVO> readAll() {
+        return houseController.getAllHouses().stream()
+                .map(HouseVO::from)
+                .toList();
+    }
+
+    /**
+     * 读取类操作的权限校验。
+     *
+     * <p>「界面藏起按钮不算安全措施」这条规矩的另一半：即便调用方绕过界面直接打接口，
+     * 也得先过这一关。ADMIN 与 AGENT 都持有 {@code house:view}，所以正常使用无感；
+     * 真正被挡住的是「角色未知」这类异常情况——未知角色在 {@code Permissions.of}
+     * 里返回空权限集，一律拒绝（fail-safe，与 R-001 的约定一致）。
+     */
+    private void requireView() {
+        if (!Session.can(Permissions.HOUSE_VIEW)) {
+            throw ApiException.forbidden("权限不足：当前账号没有查看房屋数据的权限。");
+        }
+    }
+
+    /** 把 core 的失败结果翻成对应的 HTTP 异常；成功则什么都不做 */
+    private void ensureSuccess(Result result) {
+        if (result.isSuccess()) {
+            return;
+        }
+        HttpStatus status = switch (result.getKind()) {
+            case CONFLICT -> HttpStatus.CONFLICT;
+            case NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case PERMISSION -> HttpStatus.FORBIDDEN;
+            // VALIDATION 与 OTHER 都是「请求本身办不到」，归 400
+            case VALIDATION, OTHER -> HttpStatus.BAD_REQUEST;
+        };
+        throw new ApiException(status, result.getMessage());
+    }
+
+    private List<String[]> toRows(List<HouseVO> houses) {
+        List<String[]> rows = new ArrayList<>();
+        rows.add(CSV_HEADER.clone());
+        for (HouseVO house : houses) {
+            rows.add(new String[]{
+                    house.id(),
+                    house.type(),
+                    Formats.area(house.area()),
+                    house.address(),
+                    house.status(),
+                    house.landlordId(),
+                    house.landlordName(),
+                    house.landlordContact()});
+        }
+        return rows;
+    }
+
+    /**
+     * 下载响应头。
+     *
+     * <p>同时给两个文件名：{@code filename} 是 ASCII 兜底（老客户端只认这个），
+     * {@code filename*=UTF-8''…} 是 RFC 5987 的写法，现代浏览器据此显示中文名。
+     * 只给中文名的话，部分浏览器会把它丢掉、退化成用 URL 末段当文件名。
+     */
+    private String contentDisposition(String fileName) {
+        String ascii = "houses_" + CsvExporter.today() + ".csv";
+        String encoded = URLEncoder.encode(fileName, StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        return "attachment; filename=\"" + ascii + "\"; filename*=UTF-8''" + encoded;
+    }
+
+    /** 面积缺省按 0 处理，交给 core 的校验给出「面积必须大于 0」这句有用的提示 */
+    private double area(HouseSaveRequest request) {
+        return request.area() == null ? 0 : request.area();
+    }
+
+    private boolean isNotBlank(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 }

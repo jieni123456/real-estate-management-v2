@@ -12,6 +12,7 @@
 
 import { isBlank, matches } from '../src/utils/search.js'
 import { formatArea } from '../src/utils/format.js'
+import { parseFileName } from '../src/utils/download.js'
 
 let passed = 0
 const failures = []
@@ -54,6 +55,30 @@ check('两位小数不做四舍五入', formatArea(89.25), '89.25')
 check('零', formatArea(0), '0')
 check('非数字回退为破折号', formatArea('不是数字'), '—')
 check('null 回退为破折号', formatArea(null), '—')
+
+console.log('=== 下载文件名解析（Content-Disposition）===')
+
+const BOTH =
+  'attachment; filename="houses_20260919.csv"; ' +
+  "filename*=UTF-8''%E6%88%BF%E5%B1%8B%E5%88%97%E8%A1%A8_20260919.csv"
+check('优先取 RFC 5987 的中文名', parseFileName(BOTH), '房屋列表_20260919.csv')
+
+check(
+  '只有 ASCII 名时用它',
+  parseFileName('attachment; filename="houses_20260919.csv"'),
+  'houses_20260919.csv'
+)
+check('裸文件名（无引号）也认', parseFileName('attachment; filename=houses.csv'), 'houses.csv')
+check('null 返回空串', parseFileName(null), '')
+check('空串返回空串', parseFileName(''), '')
+
+// 中文字符编码坏掉时，不能把 `*=UTF-8''…` 这段当文件名返回，要退回 ASCII 名
+check(
+  '编码损坏时退回 ASCII 名',
+  parseFileName('attachment; filename*=UTF-8\'\'%ZZbad; filename="fallback.csv"'),
+  'fallback.csv'
+)
+check('只有损坏的 filename* 时返回空串', parseFileName("attachment; filename*=UTF-8''%ZZ"), '')
 
 console.log(`\n通过 ${passed} 项，失败 ${failures.length} 项`)
 

@@ -12,6 +12,7 @@ import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * JWT 的签发与校验。对应需求报告 R-004 / G-022。
@@ -71,12 +72,18 @@ public class JwtUtil {
      * 签发 token。
      *
      * <p>载荷里只放「谁」和「什么角色」，不放口令、不放联系方式——它是明文可读的。
+     *
+     * <p>带一个随机 {@code jti}（JWT 自己的规范字段，含义就是「这张票的编号」）。
+     * 原因是 {@code iat} 的精度只到<u>秒</u>：同一用户在同一秒内登录两次，若不掺入
+     * 随机值，两枚 token 会逐字节相同。虽然都合法，但「同一秒的两枚 token 一模一样」
+     * 在排查问题时无法区分，将来要做 token 黑名单（按 jti 撤销）也无从下手。
      */
     public String issue(User user) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expireMinutes * 60_000L);
 
         return Jwts.builder()
+                .id(UUID.randomUUID().toString())
                 .subject(user.getUsername())
                 .claim("role", user.getRole())
                 .issuedAt(now)

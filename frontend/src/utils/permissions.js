@@ -35,3 +35,17 @@ export const HOUSE_STATUS_OPTIONS = [
   { label: HOUSE_STATUS.VACANT, value: HOUSE_STATUS.VACANT },
   { label: HOUSE_STATUS.RENTED, value: HOUSE_STATUS.RENTED }
 ]
+
+/**
+ * 表单里可选的状态（不含筛选用的那个空选项）。
+ *
+ * 取值必须与 core 的 model/House.java 里 STATUSES 完全一致——后端有
+ * isValidStatus 再校验一次，前端这里只是把可选项摆出来。
+ */
+export const HOUSE_STATUS_CHOICES = [
+  { label: HOUSE_STATUS.VACANT, value: HOUSE_STATUS.VACANT },
+  { label: HOUSE_STATUS.RENTED, value: HOUSE_STATUS.RENTED }
+]
+
+/** 房东下拉里表示「不是选已有房东，而是录入一个新的」的哨兵值 */
+export const NEW_LANDLORD = '__new_landlord__'

@@ -27,6 +27,9 @@ import java.util.List;
  *       {@link #countHousesByLandlord} 提供界面预告所需的数量</li>
  *   <li>R-003  房屋状态（空置 / 已租出）作为房屋属性随新增 / 编辑一起保存，
  *       并校验取值合法性。带看成交时的自动置位在 ViewingDAO 的同事务里完成</li>
+ *   <li>R-004 阶段 3  失败时用 {@link Result.Kind} 标明类型（校验 / 冲突 / 不存在 /
+ *       权限不足），供 Web 端映射成对应的 HTTP 状态码。桌面端不读这个字段，
+ *       行为与改造前完全一致</li>
  * </ul>
  *
  * <p>界面层已按权限把无权用户的删除按钮置灰，{@link #deleteHouse} 里仍会再查一次
@@ -54,13 +57,14 @@ public class HouseController {
 
         String invalid = validate(house);
         if (invalid != null) {
-            return Result.fail(invalid);
+            return Result.fail(Result.Kind.VALIDATION, invalid);
         }
 
         try {
             if (houseService.existsHouse(house.getId())) {
-                return Result.fail("房屋ID「" + house.getId() + "」已存在。请换一个ID，"
-                        + "或选中该房屋后用「编辑房屋」修改它。");
+                return Result.fail(Result.Kind.CONFLICT,
+                        "房屋ID「" + house.getId() + "」已存在。请换一个ID，"
+                                + "或选中该房屋后用「编辑房屋」修改它。");
             }
 
             // 房东已存在时沿用原信息，不覆盖
@@ -95,12 +99,13 @@ public class HouseController {
 
         String invalid = validate(house);
         if (invalid != null) {
-            return Result.fail(invalid);
+            return Result.fail(Result.Kind.VALIDATION, invalid);
         }
 
         try {
             if (!houseService.existsHouse(house.getId())) {
-                return Result.fail("房屋「" + house.getId() + "」已不存在，可能已被其他人删除。");
+                return Result.fail(Result.Kind.NOT_FOUND,
+                        "房屋「" + house.getId() + "」已不存在，可能已被其他人删除。");
             }
 
             boolean landlordExisted = houseService.existsLandlord(house.getLandlord().getId());
@@ -129,13 +134,14 @@ public class HouseController {
         if (!Session.can(Permissions.HOUSE_DELETE)) {
             System.err.println("[权限不足] " + Session.currentUserLabel() + " 尝试删除房屋，已拦截");
             // 不在此处弹窗——界面层会把 Result 的说明展示出来，两处都弹会重复提示
-            return Result.fail("权限不足：当前账号（" + Session.currentRoleName()
-                    + "）没有删除房屋的权限。");
+            return Result.fail(Result.Kind.PERMISSION,
+                    "权限不足：当前账号（" + Session.currentRoleName()
+                            + "）没有删除房屋的权限。");
         }
 
         try {
             if (!houseService.deleteHouse(houseId)) {
-                return Result.fail("删除失败：该房屋已不存在。");
+                return Result.fail(Result.Kind.NOT_FOUND, "删除失败：该房屋已不存在。");
             }
             logService.record("删除房屋", houseId, "");
             return Result.ok("房屋删除成功");

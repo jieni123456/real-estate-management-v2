@@ -49,6 +49,14 @@ http.interceptors.request.use((config) => {
 
 http.interceptors.response.use(
   (response) => {
+    /* 需要读响应头或需要那句 message 时，调用方用 rawResponse 声明，整包返回。
+     * 两种真实场景：① 导出下载要读 Content-Disposition 里的文件名；
+     * ② 新增 / 编辑成功的说明文字（例如「房东已存在，沿用其原有信息」）
+     * 就在 message 上，而默认行为只把 data 交给调用方。 */
+    if (response.config?.rawResponse) {
+      return response
+    }
+
     const body = response.data
 
     // 统一外壳：code 为 0 才算成功，把 data 交给调用方
