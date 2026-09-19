@@ -1605,7 +1605,28 @@ RISK-004  git 代理端口硬耦合
 5. 配置全局 git 身份：user.name = 谢志豪，
    user.email = 299358329+jieni123456@users.noreply.github.com（GitHub 隐私邮箱）；
    并设置 core.quotepath = false 以正确显示中文路径。
-6. 创建私有远程仓库并完成推送，远端 refs/heads/main = a6ddac5。
+6. 创建远程仓库并完成推送，远端 refs/heads/main = a6ddac5。
+   说明：本条原文写作「创建私有远程仓库」，2026-09-19 经 GitHub API 核实该表述
+        有误（实际为 public），更正经见本章第 8 条。
+
+7. 【2026-09-19】另存新仓库。
+   背景：项目已演变为前后端分离形态，用户希望单独有一个仓库承载它。
+   做法：git 中同一份本地仓库可关联任意多个远程，**另存无需复制代码**。
+         · 新增远程 v2 = https://github.com/jieni123456/real-estate-management-v2.git
+         · 推送完整 22 条历史（保留从 Swing 单体到前后端分离的演进过程）
+         · 老仓库 origin 原样保留，停在 6d5b1ea，成为「桌面版」快照
+         · 本地 branch.main 的上游改指向 v2，此后 git push 默认推新仓库
+   核实：远端 122 个文件、22 条提交，HEAD = 8c08c15，与本地一致；
+         无 db.properties / .idea / .iml / .class / .workbuddy / node_modules / target。
+
+8. 【2026-09-19】更正第 6 条：两个仓库的可见性实为 public。
+   此前对话中按「私有仓库」认知处理，本次经 GitHub API 核实
+   （old: real-estate-management、new: real-estate-management-v2，visibility 均为 public）。
+   影响评估：项目自始即按「可能公开」的标准做凭据清理（db.properties 从未入库、
+   报告中口令字样已抹除、RISK-003 密钥已外置），故未造成凭据外泄。
+   已复验两个仓库的文件清单，确认不含任何本地配置或凭据文件。
+   备注：公开对求职展示有利；若需改为私有，在仓库 Settings → General → Danger Zone
+   中调整即可，不影响已有提交。
 
 ================================================================================
 八、待办事项汇总
