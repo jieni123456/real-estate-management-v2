@@ -25,6 +25,9 @@ import java.util.List;
  *
  * <p>G-020：只有「空置」的房源可以登记带看。已租出的房子继续带看别人在现实里
  * 不会发生，所以这里拦一道；界面上的房屋下拉也做了同样的过滤。
+ *
+ * <p>R-004 阶段 4：失败时用 {@link Result.Kind} 标明类型，由 Web 层翻成
+ * 400 / 404 / 403。桌面端不读这个字段，行为与改造前一致。
  */
 public class ViewingController {
 
@@ -43,17 +46,17 @@ public class ViewingController {
 
         String invalid = validate(viewing);
         if (invalid != null) {
-            return Result.fail(invalid);
+            return Result.fail(Result.Kind.VALIDATION, invalid);
         }
 
         String blocked = checkHouseAvailable(viewing.getHouseId(), null);
         if (blocked != null) {
-            return Result.fail(blocked);
+            return Result.fail(Result.Kind.VALIDATION, blocked);
         }
 
         try {
             if (!viewingService.insertViewing(viewing)) {
-                return Result.fail("保存失败：记录未写入。");
+                return Result.fail(Result.Kind.OTHER, "保存失败：记录未写入。");
             }
             logService.record("新增带看", customerId + " → " + houseId, note);
             return Result.ok(messageFor("带看记录添加成功", viewing));
@@ -71,7 +74,7 @@ public class ViewingController {
 
         String invalid = validate(viewing);
         if (invalid != null) {
-            return Result.fail(invalid);
+            return Result.fail(Result.Kind.VALIDATION, invalid);
         }
 
         // 先取原记录：既用于「房屋有没有被换过」的判断，也把「记录已不存在」提前到这里
@@ -82,17 +85,17 @@ public class ViewingController {
             return Result.fail(e.userMessage());
         }
         if (previous == null) {
-            return Result.fail("保存失败：该带看记录已不存在。");
+            return Result.fail(Result.Kind.NOT_FOUND, "保存失败：该带看记录已不存在。");
         }
 
         String blocked = checkHouseAvailable(viewing.getHouseId(), previous.getHouseId());
         if (blocked != null) {
-            return Result.fail(blocked);
+            return Result.fail(Result.Kind.VALIDATION, blocked);
         }
 
         try {
             if (!viewingService.updateViewing(viewing)) {
-                return Result.fail("保存失败：该带看记录已不存在。");
+                return Result.fail(Result.Kind.NOT_FOUND, "保存失败：该带看记录已不存在。");
             }
             logService.record("编辑带看", customerId + " → " + houseId, result);
             return Result.ok(messageFor("带看记录已更新", viewing));
@@ -110,13 +113,14 @@ public class ViewingController {
     public Result deleteViewing(long id) {
         if (!Session.can(Permissions.VIEWING_DELETE)) {
             System.err.println("[权限不足] " + Session.currentUserLabel() + " 尝试删除带看记录，已拦截");
-            return Result.fail("权限不足：当前账号（" + Session.currentRoleName()
-                    + "）没有删除带看记录的权限。");
+            return Result.fail(Result.Kind.PERMISSION,
+                    "权限不足：当前账号（" + Session.currentRoleName()
+                            + "）没有删除带看记录的权限。");
         }
 
         try {
             if (!viewingService.deleteViewing(id)) {
-                return Result.fail("删除失败：该带看记录已不存在。");
+                return Result.fail(Result.Kind.NOT_FOUND, "删除失败：该带看记录已不存在。");
             }
             logService.record("删除带看", String.valueOf(id), "");
             return Result.ok("带看记录删除成功");

@@ -38,6 +38,7 @@ public final class AllTests {
         HouseTest.run(runner);
         ViewingRulesTest.run(runner);
         HouseQueryTest.run(runner);
+        QueryTest.run(runner);
 
         int failed = runner.report();
         System.exit(failed == 0 ? 0 : 1);

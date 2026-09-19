@@ -11,7 +11,7 @@
  */
 
 import { isBlank, matches } from '../src/utils/search.js'
-import { formatArea } from '../src/utils/format.js'
+import { formatArea, nowDateTimeText } from '../src/utils/format.js'
 import { parseFileName } from '../src/utils/download.js'
 
 let passed = 0
@@ -79,6 +79,17 @@ check(
   'fallback.csv'
 )
 check('只有损坏的 filename* 时返回空串', parseFileName("attachment; filename*=UTF-8''%ZZ"), '')
+
+/* ---- nowDateTimeText：格式必须与 core 的 DATE_TIME_SECONDS_PATTERN 一致 ----
+ * 这一个最容易写错的不是「对不对」，而是「后端的解析器认不认」：
+ * 格式只要有半点偏差（少个零、用 T 分隔），接口层就会回「格式不正确」。 */
+check('个位数补零到两位', nowDateTimeText(new Date(2026, 0, 5, 3, 7, 9)), '2026-01-05 03:07:09')
+check('月末年末不出错', nowDateTimeText(new Date(2026, 11, 31, 23, 59, 59)), '2026-12-31 23:59:59')
+check(
+  '整体形状与后端约定的模式一致（yyyy-MM-dd HH:mm:ss）',
+  /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(nowDateTimeText()),
+  true
+)
 
 console.log(`\n通过 ${passed} 项，失败 ${failures.length} 项`)
 

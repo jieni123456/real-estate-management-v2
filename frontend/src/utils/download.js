@@ -48,5 +48,16 @@ export function downloadBlob(blob, fileName) {
   document.body.appendChild(link)
   link.click()
   link.remove()
-  URL.revokeObjectURL(url)
+
+  /* 释放要**延后**，不能紧跟 click 之后。
+   *
+   * 下载是异步开始的：click 返回时浏览器只是"记下要做这件事"，真正读取 Blob 可能在
+   * 之后的某个 tick。规范与 MDN 都建议等下载开始后再释放对象 URL，立刻 revoke 属于
+   * 潜在的竞态（Blob URL 提前失效 → 文件落不下来）。
+   *
+   * 注：阶段 4 排错时曾怀疑这里是「导出提示成功但文件没出现」的原因，最终查明根因
+   * 在测试侧（CDP 的下载路径格式，见需求报告 5.15）。此处保留改动，因为它本来就
+   * 更稳妥，代价也可以忽略——几十 KB 的内存多留一秒而已。
+   */
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

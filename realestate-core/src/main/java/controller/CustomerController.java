@@ -21,6 +21,9 @@ import java.util.List;
  *   <li>G-002  提供编辑入口（客户 ID 为主键，不可修改）</li>
  *   <li>G-012  数据库异常转成用户能看懂的说明</li>
  *   <li>G-017  新增 / 编辑 / 删除 / 导出写操作日志</li>
+ *   <li>R-004 阶段 4  失败时用 {@link Result.Kind} 标明类型（校验 / 冲突 / 不存在 /
+ *       权限），由 Web 层翻成 400 / 409 / 404 / 403。桌面端不读这个字段，
+ *       行为与改造前一致</li>
  * </ul>
  */
 public class CustomerController {
@@ -41,17 +44,18 @@ public class CustomerController {
 
         String invalid = validate(customer);
         if (invalid != null) {
-            return Result.fail(invalid);
+            return Result.fail(Result.Kind.VALIDATION, invalid);
         }
 
         try {
             if (customerService.existsCustomer(customer.getId())) {
-                return Result.fail("客户ID「" + customer.getId() + "」已存在。请换一个ID，"
-                        + "或选中该客户后用「编辑客户」修改它。");
+                return Result.fail(Result.Kind.CONFLICT,
+                        "客户ID「" + customer.getId() + "」已存在。请换一个ID，"
+                                + "或选中该客户后用「编辑客户」修改它。");
             }
 
             if (!customerService.insertCustomer(customer)) {
-                return Result.fail("保存失败：记录未写入。");
+                return Result.fail(Result.Kind.OTHER, "保存失败：记录未写入。");
             }
 
             logService.record("新增客户", customer.getId(), customer.getName());
@@ -70,16 +74,17 @@ public class CustomerController {
 
         String invalid = validate(customer);
         if (invalid != null) {
-            return Result.fail(invalid);
+            return Result.fail(Result.Kind.VALIDATION, invalid);
         }
 
         try {
             if (!customerService.existsCustomer(customer.getId())) {
-                return Result.fail("客户「" + customer.getId() + "」已不存在，可能已被其他人删除。");
+                return Result.fail(Result.Kind.NOT_FOUND,
+                        "客户「" + customer.getId() + "」已不存在，可能已被其他人删除。");
             }
 
             if (!customerService.updateCustomer(customer)) {
-                return Result.fail("保存失败：记录未更新。");
+                return Result.fail(Result.Kind.OTHER, "保存失败：记录未更新。");
             }
 
             logService.record("编辑客户", customer.getId(), customer.getName());
@@ -100,13 +105,14 @@ public class CustomerController {
     public Result deleteCustomer(String customerId) {
         if (!Session.can(Permissions.CUSTOMER_DELETE)) {
             System.err.println("[权限不足] " + Session.currentUserLabel() + " 尝试删除客户，已拦截");
-            return Result.fail("权限不足：当前账号（" + Session.currentRoleName()
-                    + "）没有删除客户的权限。");
+            return Result.fail(Result.Kind.PERMISSION,
+                    "权限不足：当前账号（" + Session.currentRoleName()
+                            + "）没有删除客户的权限。");
         }
 
         try {
             if (!customerService.deleteCustomer(customerId)) {
-                return Result.fail("删除失败：该客户已不存在。");
+                return Result.fail(Result.Kind.NOT_FOUND, "删除失败：该客户已不存在。");
             }
             logService.record("删除客户", customerId, "");
             return Result.ok("客户删除成功");

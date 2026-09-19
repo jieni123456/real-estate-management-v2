@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Expand, Fold, House, SwitchButton } from '@element-plus/icons-vue'
+import { Calendar, Expand, Fold, House, SwitchButton, User } from '@element-plus/icons-vue'
 import { useSessionStore } from '@/store/session'
 import { useUiStore } from '@/store/ui'
 
@@ -20,13 +20,19 @@ const router = useRouter()
 const session = useSessionStore()
 const ui = useUiStore()
 
-const navItems = [{ name: 'houses', title: '房屋管理', icon: House }]
+const navItems = [
+  { name: 'houses', title: '房屋管理', icon: House },
+  { name: 'customers', title: '客户管理', icon: User },
+  { name: 'viewings', title: '带看记录', icon: Calendar }
+]
 
 /**
  * 侧边栏只有 120px 宽，长句子会被折成很难看的碎行，
  * 所以这里用换行符手动断句（配合 CSS 的 white-space: pre-line）。
+ *
+ * 阶段 4 之后只剩概览页没做——它不渲染成点不动的灰项，那样会让人以为是坏了。
  */
-const pendingHint = '更多模块\n后续阶段接入'
+const pendingHint = '系统概览\n后续阶段接入'
 
 /** 收起时只留下图标，所以标题要换成 tooltip 才不会看不懂 */
 const collapsed = computed(() => ui.sidebarCollapsed)

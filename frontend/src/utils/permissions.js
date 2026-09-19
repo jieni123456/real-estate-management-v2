@@ -49,3 +49,27 @@ export const HOUSE_STATUS_CHOICES = [
 
 /** 房东下拉里表示「不是选已有房东，而是录入一个新的」的哨兵值 */
 export const NEW_LANDLORD = '__new_landlord__'
+
+/**
+ * 带看结果。取值必须与 core 的 model/Viewing.java 里的 RESULT_* 完全一致——
+ * 后端有 isValidResult 再校验一次，前端这里只是把可选项摆出来。
+ */
+export const VIEWING_RESULT = {
+  INTENT: '意向中',
+  DEAL: '已成交',
+  REJECT: '无意向'
+}
+
+export const VIEWING_RESULT_OPTIONS = [
+  { label: '全部结果', value: '' },
+  { label: VIEWING_RESULT.INTENT, value: VIEWING_RESULT.INTENT },
+  { label: VIEWING_RESULT.DEAL, value: VIEWING_RESULT.DEAL },
+  { label: VIEWING_RESULT.REJECT, value: VIEWING_RESULT.REJECT }
+]
+
+/** 表单里可选的结果（不含筛选用的那个空选项） */
+export const VIEWING_RESULT_CHOICES = [
+  { label: VIEWING_RESULT.INTENT, value: VIEWING_RESULT.INTENT },
+  { label: VIEWING_RESULT.DEAL, value: VIEWING_RESULT.DEAL },
+  { label: VIEWING_RESULT.REJECT, value: VIEWING_RESULT.REJECT }
+]

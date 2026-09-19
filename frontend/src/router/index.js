@@ -24,6 +24,18 @@ const routes = [
         name: 'houses',
         component: () => import('@/views/HouseListView.vue'),
         meta: { title: '房屋管理' }
+      },
+      {
+        path: 'customers',
+        name: 'customers',
+        component: () => import('@/views/CustomerListView.vue'),
+        meta: { title: '客户管理' }
+      },
+      {
+        path: 'viewings',
+        name: 'viewings',
+        component: () => import('@/views/ViewingListView.vue'),
+        meta: { title: '带看记录' }
       }
     ]
   },

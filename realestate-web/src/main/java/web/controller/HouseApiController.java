@@ -20,13 +20,13 @@ import util.Formats;
 import util.HouseQuery;
 import util.Permissions;
 import util.Result;
-import util.Session;
 import web.dto.ApiResponse;
 import web.dto.DeletionInfoVO;
 import web.dto.HouseSaveRequest;
 import web.dto.HouseVO;
 import web.dto.LandlordVO;
 import web.exception.ApiException;
+import web.support.ApiSupport;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -76,14 +76,14 @@ public class HouseApiController {
      */
     @GetMapping
     public ApiResponse<List<HouseVO>> list() {
-        requireView();
+        ApiSupport.requirePermission(Permissions.HOUSE_VIEW, "房屋");
         return ApiResponse.ok(readAll());
     }
 
     /** 房东列表，供「新增 / 编辑房屋」对话框的下拉选择使用（G-007） */
     @GetMapping("/landlords")
     public ApiResponse<List<LandlordVO>> landlords() {
-        requireView();
+        ApiSupport.requirePermission(Permissions.HOUSE_VIEW, "房屋");
         List<LandlordVO> landlords = houseController.getAllLandlords().stream()
                 .map(LandlordVO::from)
                 .toList();
@@ -98,7 +98,7 @@ public class HouseApiController {
      */
     @GetMapping("/{id}/deletion-info")
     public ApiResponse<DeletionInfoVO> deletionInfo(@PathVariable String id) {
-        requireView();
+        ApiSupport.requirePermission(Permissions.HOUSE_VIEW, "房屋");
 
         HouseVO target = readAll().stream()
                 .filter(house -> house.id().equals(id))
@@ -130,7 +130,7 @@ public class HouseApiController {
     @GetMapping("/export")
     public ResponseEntity<byte[]> export(@RequestParam(required = false) String keyword,
                                         @RequestParam(required = false) String status) {
-        requireView();
+        ApiSupport.requirePermission(Permissions.HOUSE_VIEW, "房屋");
 
         List<HouseVO> rows = HouseQuery.filter(houseController.getAllHouses(), keyword, status)
                 .stream()
@@ -166,7 +166,7 @@ public class HouseApiController {
                 request.landlordId(), request.landlordName(), request.landlordContact(),
                 request.status());
 
-        ensureSuccess(result);
+        ApiSupport.ensureSuccess(result);
         return ApiResponse.ok(result.getMessage(), null);
     }
 
@@ -189,7 +189,7 @@ public class HouseApiController {
                 request.landlordId(), request.landlordName(), request.landlordContact(),
                 request.status());
 
-        ensureSuccess(result);
+        ApiSupport.ensureSuccess(result);
         return ApiResponse.ok(result.getMessage(), null);
     }
 
@@ -202,7 +202,7 @@ public class HouseApiController {
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable String id) {
         Result result = houseController.deleteHouse(id);
-        ensureSuccess(result);
+        ApiSupport.ensureSuccess(result);
         return ApiResponse.ok(result.getMessage(), null);
     }
 
@@ -215,33 +215,10 @@ public class HouseApiController {
     }
 
     /**
-     * 读取类操作的权限校验。
-     *
-     * <p>「界面藏起按钮不算安全措施」这条规矩的另一半：即便调用方绕过界面直接打接口，
-     * 也得先过这一关。ADMIN 与 AGENT 都持有 {@code house:view}，所以正常使用无感；
-     * 真正被挡住的是「角色未知」这类异常情况——未知角色在 {@code Permissions.of}
-     * 里返回空权限集，一律拒绝（fail-safe，与 R-001 的约定一致）。
+     * 权限校验与「失败结果 → HTTP 状态码」的翻译都移到了
+     * {@link ApiSupport}——客户、带看两组接口需要同一套逻辑，各写一份迟早会漂移
+     * （某个接口把 409 写成 400，而调用方只看到文案、看不出区别）。
      */
-    private void requireView() {
-        if (!Session.can(Permissions.HOUSE_VIEW)) {
-            throw ApiException.forbidden("权限不足：当前账号没有查看房屋数据的权限。");
-        }
-    }
-
-    /** 把 core 的失败结果翻成对应的 HTTP 异常；成功则什么都不做 */
-    private void ensureSuccess(Result result) {
-        if (result.isSuccess()) {
-            return;
-        }
-        HttpStatus status = switch (result.getKind()) {
-            case CONFLICT -> HttpStatus.CONFLICT;
-            case NOT_FOUND -> HttpStatus.NOT_FOUND;
-            case PERMISSION -> HttpStatus.FORBIDDEN;
-            // VALIDATION 与 OTHER 都是「请求本身办不到」，归 400
-            case VALIDATION, OTHER -> HttpStatus.BAD_REQUEST;
-        };
-        throw new ApiException(status, result.getMessage());
-    }
 
     private List<String[]> toRows(List<HouseVO> houses) {
         List<String[]> rows = new ArrayList<>();
