@@ -29,6 +29,20 @@ public final class Theme {
     /** 成功提示文字色 */
     public static final Color SUCCESS = new Color(0x1E, 0x7B, 0x34);
 
+    // -------------------------------------------------------- 指标卡强调色
+    //
+    // 概览页五张卡各用一个色，用来彼此区分 —— 一排同色卡片看起来像装饰。
+    // 放在 Theme 里而不是写死在 OverviewView：网页端也要用同一组取值
+    // （见 frontend/src/styles/theme.css 的 --metric-*）。
+    // 它们此前是直接写在 OverviewView 里的字面量，属于「样式散落硬编码」，
+    // 2026-09-20 归位到这里。
+
+    public static final Color METRIC_HOUSE = new Color(0x25, 0x68, 0xBE);
+    public static final Color METRIC_CUSTOMER = new Color(0x0E, 0x9A, 0x8A);
+    public static final Color METRIC_LANDLORD = new Color(0x5A, 0x5A, 0xD6);
+    public static final Color METRIC_VIEWING = new Color(0xC2, 0x47, 0x7D);
+    public static final Color METRIC_VACANT = new Color(0xD9, 0x81, 0x2F);
+
     // ------------------------------------------------------------ 背景与文字
 
     public static final Color PAGE_BG = new Color(0xF5, 0xF8, 0xFC);

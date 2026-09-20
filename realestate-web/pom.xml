@@ -62,6 +62,16 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- 接口文档：OpenAPI 描述 + Swagger UI 页面。
+             生成的不是另写的一份文档，而是从 Controller 的注解与 DTO 反射出来的 ——
+             代码改了文档自动跟着变，不会出现「文档写着 200、实际返回 400」。
+             版本对应 Spring Boot 3.5.16（见父 POM 的说明）。 -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
+
         <!-- core 的测试基础设施（TestRunner）。
              用 test-jar 类型取 core 的测试包，避免把断言框架在本模块抄第二份。
              只在测试期需要，故 scope=test —— 它不会进入运行时依赖。 -->

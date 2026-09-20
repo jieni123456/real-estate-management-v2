@@ -25,13 +25,18 @@ const errorText = ref('')
 
 const features = ['房源管理', '客户管理', '一站完成']
 
-/** 只接受站内的跳转地址，避免被 ?redirect=//evil.com 之类利用 */
+/**
+ * 只接受站内的跳转地址，避免被 ?redirect=//evil.com 之类利用。
+ *
+ * 没有 redirect 时落在「系统概览」而不是房屋列表 —— 与桌面端一致：
+ * 先给几个数字，比直接扔一张空表格更能说明「这个系统里有什么」。
+ */
 function safeRedirect() {
   const target = route.query.redirect
   if (typeof target === 'string' && target.startsWith('/') && !target.startsWith('//')) {
     return target
   }
-  return { name: 'houses' }
+  return { name: 'overview' }
 }
 
 async function submit() {

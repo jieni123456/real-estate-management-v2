@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Calendar, Expand, Fold, House, SwitchButton, User } from '@element-plus/icons-vue'
+import { Calendar, Expand, Fold, House, Odometer, SwitchButton, User } from '@element-plus/icons-vue'
 import { useSessionStore } from '@/store/session'
 import { useUiStore } from '@/store/ui'
 
@@ -12,27 +12,21 @@ import { useUiStore } from '@/store/ui'
  * 四层结构与桌面版一致：应用栏 / 侧边栏 + 内容区 / 状态栏。
  * 应用栏右侧集中放「当前用户 · 角色」与「退出登录」——桌面版里是同一个位置。
  *
- * 阶段 2 只接了房屋管理一个模块。其余模块**不渲染成点不动的灰项**：
- * 那样会让人以为是坏了，不如老实说一句「后续阶段接入」。
+ * 阶段 5 补上「系统概览」之后四个模块齐了，侧边栏底部那句
+ * 「后续阶段接入」的提示也就没必要留着。
  */
 const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const ui = useUiStore()
 
+/** 顺序与桌面端侧边栏一致：概览在最前 */
 const navItems = [
+  { name: 'overview', title: '系统概览', icon: Odometer },
   { name: 'houses', title: '房屋管理', icon: House },
   { name: 'customers', title: '客户管理', icon: User },
   { name: 'viewings', title: '带看记录', icon: Calendar }
 ]
-
-/**
- * 侧边栏只有 120px 宽，长句子会被折成很难看的碎行，
- * 所以这里用换行符手动断句（配合 CSS 的 white-space: pre-line）。
- *
- * 阶段 4 之后只剩概览页没做——它不渲染成点不动的灰项，那样会让人以为是坏了。
- */
-const pendingHint = '系统概览\n后续阶段接入'
 
 /** 收起时只留下图标，所以标题要换成 tooltip 才不会看不懂 */
 const collapsed = computed(() => ui.sidebarCollapsed)
@@ -103,8 +97,6 @@ async function handleLogout() {
             <span v-if="!collapsed" class="nav-text">{{ item.title }}</span>
           </router-link>
         </nav>
-
-        <p v-if="!collapsed" class="pending">{{ pendingHint }}</p>
       </aside>
 
       <!-- 内容区：路由匹配到的页面在这里渲染 -->
@@ -242,16 +234,6 @@ async function handleLogout() {
 
 .nav-icon {
   font-size: 15px;
-}
-
-.pending {
-  margin: auto 4px 4px;
-  font-size: var(--font-caption);
-  color: var(--text-secondary);
-  /* 手动断好的行要保留，否则 120px 宽度里会被折成碎行 */
-  white-space: pre-line;
-  line-height: 1.7;
-  opacity: 0.85;
 }
 
 .content {

@@ -2,6 +2,7 @@ package dao;
 
 import model.House;
 import model.Overview;
+import util.DataAccessException;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -35,7 +36,14 @@ public class StatsDAO {
     private static final String TYPE_DISTRIBUTION =
             "SELECT type, COUNT(*) AS total FROM houses GROUP BY type ORDER BY total DESC, type";
 
-    /** 一次性取回概览页所需的全部统计值 */
+    /**
+     * 一次性取回概览页所需的全部统计值。
+     *
+     * <p>读失败时**抛异常而不是返回空统计**（对应需求报告 G-012 定下的规矩：
+     * 「空列表」与「读不出来」必须区分）。此前这里返回 {@code Overview.empty()}，
+     * 结果是数据库连不上时概览页显示一片 0 —— 看起来像「系统里没有任何数据」，
+     * 而真相是根本没读到。上层的界面/接口层负责把它翻成可读提示。
+     */
     public Overview loadOverview() {
         try (Connection conn = DatabaseUtil.getConnection()) {
             int houseCount = count(conn, COUNT_HOUSES);
@@ -50,8 +58,7 @@ public class StatsDAO {
 
         } catch (SQLException e) {
             System.err.println("统计查询失败: " + e.getMessage());
-            e.printStackTrace();
-            return Overview.empty();
+            throw DataAccessException.from(e);
         }
     }
 

@@ -2,10 +2,13 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useSessionStore } from '@/store/session'
 
 /**
- * 路由表与登录守卫。对应需求报告 R-004 阶段 2。
+ * 路由表与登录守卫。对应需求报告 R-004 阶段 2（阶段 5 增加了概览页）。
  *
  * 路由懒加载（() => import(...)）不是必要的：这个规模的项目一次全打进去也不慢。
  * 用它主要是习惯 —— 每个页面被拆成独立的 chunk，将来页面变多时首屏不会跟着变大。
+ *
+ * 默认落地页是「系统概览」而不是房屋列表：几个数字一眼可见，
+ * 比直接扔一张空表格更能说明「这个系统里有什么」。这与桌面端的落点一致。
  */
 const routes = [
   {
@@ -18,7 +21,13 @@ const routes = [
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
     children: [
-      { path: '', redirect: { name: 'houses' } },
+      { path: '', redirect: { name: 'overview' } },
+      {
+        path: 'overview',
+        name: 'overview',
+        component: () => import('@/views/OverviewView.vue'),
+        meta: { title: '系统概览' }
+      },
       {
         path: 'houses',
         name: 'houses',
@@ -40,7 +49,7 @@ const routes = [
     ]
   },
   // 未匹配的地址一律回首页，避免出现空白页
-  { path: '/:pathMatch(.*)*', redirect: { name: 'houses' } }
+  { path: '/:pathMatch(.*)*', redirect: { name: 'overview' } }
 ]
 
 const router = createRouter({
@@ -73,7 +82,7 @@ router.beforeEach(async (to) => {
   }
 
   if (to.meta.public) {
-    return session.isLoggedIn ? { name: 'houses' } : true
+    return session.isLoggedIn ? { name: 'overview' } : true
   }
 
   if (!session.isLoggedIn) {

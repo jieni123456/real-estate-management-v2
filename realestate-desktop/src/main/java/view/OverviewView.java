@@ -31,7 +31,7 @@ import java.util.function.Consumer;
 /**
  * 系统概览页。对应需求报告 G-009。
  *
- * <p>四张指标卡（房源 / 客户 / 房东 / 平均面积）+ 一张户型分布图。
+ * <p>五张指标卡（房源 / 客户 / 房东 / 带看 / 空置）+ 户型分布图 + 最近操作。
  * 之所以把它做成登录后的默认落地页：几个数字一眼可见，比直接扔一张空表格
  * 更能说明「这个系统里有什么」。
  *
@@ -46,12 +46,12 @@ public class OverviewView extends JPanel {
     private final LogController logController;
     private final Consumer<String> statusReporter;
 
-    private final StatCard houseCard = new StatCard("房源总数", Theme.ACCENT);
-    private final StatCard customerCard = new StatCard("客户总数", new Color(0x0E, 0x9A, 0x8A));
-    private final StatCard landlordCard = new StatCard("房东总数", new Color(0x5A, 0x5A, 0xD6));
-    private final StatCard viewingCard = new StatCard("带看记录", new Color(0xC2, 0x47, 0x7D));
+    private final StatCard houseCard = new StatCard("房源总数", Theme.METRIC_HOUSE);
+    private final StatCard customerCard = new StatCard("客户总数", Theme.METRIC_CUSTOMER);
+    private final StatCard landlordCard = new StatCard("房东总数", Theme.METRIC_LANDLORD);
+    private final StatCard viewingCard = new StatCard("带看记录", Theme.METRIC_VIEWING);
     /** R-003：原「平均面积」卡已换成「空置房源」——空置数最接近这个系统的「库存」 */
-    private final StatCard vacantCard = new StatCard("空置房源", new Color(0xD9, 0x81, 0x2F));
+    private final StatCard vacantCard = new StatCard("空置房源", Theme.METRIC_VACANT);
 
     private final DistributionPanel distribution = new DistributionPanel();
     private final ActivityPanel activity = new ActivityPanel();
@@ -133,8 +133,10 @@ public class OverviewView extends JPanel {
      * 重新读取统计数据与最近操作。切换到本页时由 MainView 调用。
      *
      * <p>读取失败时把卡片显示为占位符并提示，而不是让异常冒到事件分发线程上——
-     * 那样整个界面会直接卡死（对应需求报告 G-012）。最近操作属辅助信息，
-     * LogController 内部已把读取失败降级为空列表，不打扰用户。
+     * 那样整个界面会直接卡死（对应需求报告 G-012）。
+     *
+     * <p>最近操作单独 try：它与统计是两件互不相干的事，任何一方读不出来
+     * 都不该把另一方也拖下水。
      */
     public void refresh() {
         try {
@@ -168,7 +170,16 @@ public class OverviewView extends JPanel {
                     "读取失败", JOptionPane.ERROR_MESSAGE);
         }
 
-        activity.setData(logController.getRecent(RECENT_LOG_LIMIT));
+        try {
+            activity.setData(logController.getRecent(RECENT_LOG_LIMIT));
+        } catch (DataAccessException e) {
+            // 日志读不出来 ≠ 没有操作记录，所以清空并给出提示，而不是静静地显示「暂无」
+            activity.setData(List.of());
+            activity.setFailed(true);
+            if (statusReporter != null) {
+                statusReporter.accept("操作日志读取失败");
+            }
+        }
     }
 
     // ------------------------------------------------------------ 指标卡
@@ -375,6 +386,7 @@ public class OverviewView extends JPanel {
         private static final int PADDING = 18;
 
         private List<OperationLog> data = List.of();
+        private boolean failed;
 
         private ActivityPanel() {
             setOpaque(false);
@@ -384,6 +396,13 @@ public class OverviewView extends JPanel {
 
         private void setData(List<OperationLog> data) {
             this.data = data == null ? List.of() : data;
+            this.failed = false;
+            updateHeight();
+        }
+
+        /** 标记为「读取失败」。与「暂无操作记录」是两种不同的空，必须分开展示 */
+        private void setFailed(boolean failed) {
+            this.failed = failed;
             updateHeight();
         }
 
@@ -417,8 +436,9 @@ public class OverviewView extends JPanel {
 
                 if (data.isEmpty()) {
                     g2.setFont(Theme.FONT_CAPTION);
-                    g2.setColor(Theme.TEXT_SECONDARY);
-                    g2.drawString("暂无操作记录", PADDING, HEADER_H + 14);
+                    g2.setColor(failed ? Theme.DANGER : Theme.TEXT_SECONDARY);
+                    g2.drawString(failed ? "操作日志读取失败" : "暂无操作记录",
+                            PADDING, HEADER_H + 14);
                     return;
                 }
 
