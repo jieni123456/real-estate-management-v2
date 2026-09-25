@@ -1,0 +1,33 @@
+# ai-service 的依赖清单。
+#
+# 版本写死（==）而不是用范围：这个目录的一部分用途是「clone 下来能跑起来」，
+# 依赖版本漂移会让「我这儿能跑」变成一句空话。
+#
+# 安装（先建 venv 再装，别装进全局环境）：
+#     python -m venv .venv
+#     .venv\Scripts\activate          # Git Bash 下是 source .venv/Scripts/activate
+#     pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# ---- 调用模型 ----
+openai==3.19.2          # OpenAI 协议客户端。通义千问的兼容模式直接复用它，
+                        # 不额外引入 dashscope SDK——少一个 SDK，少一套概念。
+pydantic==2.13.5        # 结构化输出的字段校验
+python-dotenv==1.2.3    # 读取 .env
+
+# ---- Day 2 的最小 RAG ----
+langchain-core==1.6.5   # Document / ChatPromptTemplate / StrOutputParser / InMemoryVectorStore
+langchain-openai==1.6.6 # ChatOpenAI / OpenAIEmbeddings 这两个兼容接入点
+tiktoken==0.14.0        # langchain-openai 的传递依赖。显式钉住，避免它静默升级
+                        # 后改变 OpenAIEmbeddings 的默认编码行为。
+numpy==2.5.3            # InMemoryVectorStore 算余弦相似度用它。langchain-core 只把
+                        # numpy 列为**可选**依赖：不装的话导入没问题，一直到
+                        # similarity_search 那一步才抛 ImportError。
+                        # 这个坑跑单元测试是撞不到的（测试不碰真实向量表），
+                        # 只有把 demo_day2 真的跑一遍才会遇到。
+                        #
+                        # 另外它也是整个依赖链里要求最高的一个：声明了
+                        # requires-python >= 3.12，所以本项目的 Python 门槛由它决定。
+                        # 其余依赖最低只要 3.10。
+
+# ---- 测试 ----
+pytest==9.1.1           # tests/ 下的断言测试不联网，随时可跑

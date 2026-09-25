@@ -62,3 +62,10 @@ db.properties
 
 # ---- 本地工具数据 ----
 .workbuddy/
+
+# ---- Python（ai-service/，见 ai-service/README.md）----
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
