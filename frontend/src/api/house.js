@@ -62,3 +62,26 @@ export async function exportHouses({ keyword = '', status = '' } = {}) {
     fileName: parseFileName(response.headers?.['content-disposition'])
   }
 }
+
+/**
+ * 批量导入 CSV。对应需求报告 R-006。
+ *
+ * 只把文件原样递过去，前端不做解析、不做校验 —— 解析、逐行校验、写库全在
+ * core 里，与「添加房屋」走的是同一条路径。这样「从界面上导进去的」与
+ * 「手动一条条添加能被接受的」必然是同一套规则，不会出现两套。
+ *
+ * 注意这里的 Content-Type 不手写：axios 发现 data 是 FormData 时会自己补上
+ * 带 boundary 的那一份，手写反而会把 boundary 弄丢，服务端解析不出文件。
+ *
+ * 失败行是「正常返回」而不是异常：HTTP 仍是 200，逐条原因在 report 里。
+ */
+export async function importHouses(file) {
+  const form = new FormData()
+  form.append('file', file)
+
+  const response = await http.post('/houses/import', form, { rawResponse: true })
+  return {
+    message: response.data.message,
+    report: response.data.data
+  }
+}

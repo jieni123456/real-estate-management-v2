@@ -4,6 +4,7 @@ import controller.HouseController;
 import model.House;
 import model.Landlord;
 import util.CsvExporter;
+import util.HouseCsv;
 import util.DataAccessException;
 import util.Formats;
 import util.Result;
@@ -64,8 +65,12 @@ import java.util.function.Consumer;
 
 public class HouseView extends JPanel {
 
-    private static final String[] COLUMNS =
-            {"ID", "户型", "面积(m²)", "地址", "状态", "房东ID", "房东姓名", "房东电话"};
+    /**
+     * 表格列名，同时也是导出的表头。与网页端、以及导入时的表头校验共用
+     * {@code core} 的 {@link HouseCsv#HEADER} 一份定义 —— 原先两端各写一份，
+     * 支持导入之后这两处必须逐字一致，否则自己导出的文件自己导不回来。
+     */
+    private static final String[] COLUMNS = HouseCsv.HEADER;
 
     /** 面积列的下标。它在模型里存 Double 而不是格式化后的字符串，见 createHouseTable */
     private static final int AREA_COLUMN = 2;

@@ -1,6 +1,7 @@
 package web.controller;
 
 import controller.HouseController;
+import model.HouseImportReport;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -15,8 +16,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import util.CsvExporter;
 import util.Formats;
+import util.HouseCsv;
 import util.HouseQuery;
 import util.Permissions;
 import util.Result;
@@ -24,10 +27,12 @@ import web.dto.ApiResponse;
 import web.dto.DeletionInfoVO;
 import web.dto.HouseSaveRequest;
 import web.dto.HouseVO;
+import web.dto.ImportReportVO;
 import web.dto.LandlordVO;
 import web.exception.ApiException;
 import web.support.ApiSupport;
 
+import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -57,9 +62,13 @@ import java.util.List;
 @RequestMapping("/api/houses")
 public class HouseApiController {
 
-    /** 导出文件的表头。顺序与界面表格、桌面端导出一致 */
-    private static final String[] CSV_HEADER =
-            {"ID", "户型", "面积(m²)", "地址", "状态", "房东ID", "房东姓名", "房东电话"};
+    /**
+     * 导出文件的表头。顺序与界面表格、桌面端导出、以及导入时的表头校验共用
+     * {@code core} 的 {@link HouseCsv#HEADER} 一份定义 —— 原先网页端与桌面端各写了一份，
+     * 支持导入之后，「导出的文件要能原样导回来」就要求这两处逐字一致，
+     * 各写各的迟早会漂移。
+     */
+    private static final String[] CSV_HEADER = HouseCsv.HEADER;
 
     private static final String CSV_CONTENT_TYPE = "text/csv;charset=UTF-8";
 
@@ -147,6 +156,57 @@ public class HouseApiController {
                 .contentType(MediaType.parseMediaType(CSV_CONTENT_TYPE))
                 .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition(fileName))
                 .body(body);
+    }
+
+    // ---------------------------------------------------------------- 导入
+
+    /**
+     * 批量导入 CSV。对应需求报告 R-006。
+     *
+     * <p><b>表头不对就整批拒绝（400），不逐行报错。</b>拿客户表、带看表或者随手
+     * 整理过的文件来导入时，逐行处理会产出 100 条「字段不合法」——用户会去逐条查
+     * 自己的数据，而真正的原因只有一个：导错文件了。所以先用
+     * {@link HouseCsv#isExpectedHeader} 判一次，在开始写库之前就挡掉。
+     *
+     * <p><b>表头对、但某几行有问题</b>时走的才是逐行路径：core 会跳过坏行继续写，
+     * 把每一条的行号与原因放进 {@link ImportReportVO} 返回（HTTP 仍是 200 ——
+     * 请求本身是被正常处理的，导进去多少条由报告说明，而不是由状态码说明）。
+     *
+     * <p><b>权限不足返回 403</b>，与删除房屋一致：导入是批量写操作，只给 ADMIN。
+     *
+     * <p>编码不在这一层操心：{@link HouseCsv#decode} 会处理「Excel 另存为 CSV
+     * 存成 GBK」这种情况，这里拿到的已经是正确的文本。
+     */
+    @PostMapping("/import")
+    public ApiResponse<ImportReportVO> importCsv(@RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw ApiException.badRequest("没有收到文件内容，请重新选择文件。");
+        }
+
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw ApiException.badRequest("文件读取失败：" + e.getMessage());
+        }
+
+        List<String[]> rows = HouseCsv.parse(HouseCsv.decode(bytes));
+        if (rows.isEmpty()) {
+            throw ApiException.badRequest("文件是空的，没有读到任何内容。");
+        }
+        if (!HouseCsv.isExpectedHeader(rows)) {
+            throw ApiException.badRequest(HouseCsv.describeHeaderMismatch(rows));
+        }
+
+        // 第 1 行是表头，从第 2 行起才是数据；行号一并带下去，报告里给用户的行号
+        // 就能与他手上的文件对上
+        HouseImportReport report = houseController.importHouses(
+                rows.subList(1, rows.size()), file.getOriginalFilename());
+
+        if (!report.isPermitted()) {
+            throw ApiException.forbidden(report.getDenyReason());
+        }
+        return ApiResponse.ok(report.summary(), ImportReportVO.from(report));
     }
 
     // ---------------------------------------------------------------- 写入

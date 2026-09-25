@@ -1,6 +1,7 @@
 package controller;
 
 import model.House;
+import model.HouseImportReport;
 import model.Landlord;
 import service.HouseService;
 import service.LogService;
@@ -11,6 +12,7 @@ import util.Result;
 import util.Session;
 import util.Validators;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -30,12 +32,33 @@ import java.util.List;
  *   <li>R-004 阶段 3  失败时用 {@link Result.Kind} 标明类型（校验 / 冲突 / 不存在 /
  *       权限不足），供 Web 端映射成对应的 HTTP 状态码。桌面端不读这个字段，
  *       行为与改造前完全一致</li>
+ *   <li>R-006  批量导入 CSV：逐行走 {@link #createHouse}（即单条新增那条路径），
+ *       跳过坏行并在 {@link HouseImportReport} 里逐条给出原因与行号。仅 ADMIN 可用</li>
  * </ul>
  *
- * <p>界面层已按权限把无权用户的删除按钮置灰，{@link #deleteHouse} 里仍会再查一次
- * 权限——这是第二道防线，防止绕过界面直接调用。
+ * <p>界面层已按权限把无权用户的删除 / 导入按钮置灰，{@link #deleteHouse} 与
+ * {@link #importHouses} 里仍会再查一次权限——这是第二道防线，防止绕过界面直接调用。
  */
 public class HouseController {
+
+    /**
+     * CSV 各列的下标，与 {@link util.HouseCsv#HEADER} 的列顺序一一对应。
+     *
+     * <p>用常量而不是散落的字面量：列序一旦调整（比如把「状态」挪个位置），
+     * 漏改某一处会表现为「户型那列导进了地址」—— 数据看着有，但全是错的，
+     * 比直接报错难发现得多。
+     */
+    private static final int COLUMN_ID = 0;
+    private static final int COLUMN_TYPE = 1;
+    private static final int COLUMN_AREA = 2;
+    private static final int COLUMN_ADDRESS = 3;
+    private static final int COLUMN_STATUS = 4;
+    private static final int COLUMN_LANDLORD_ID = 5;
+    private static final int COLUMN_LANDLORD_NAME = 6;
+    private static final int COLUMN_LANDLORD_CONTACT = 7;
+
+    /** 数据行在 CSV 里的起始行号。第 1 行是表头，所以从 2 数起 */
+    private static final int FIRST_DATA_LINE = 2;
 
     private final HouseService houseService = new HouseService();
     private final LogService logService = new LogService();
@@ -52,6 +75,31 @@ public class HouseController {
     public Result addHouse(String id, String type, double area, String address,
                            String landlordId, String landlordName, String landlordContact,
                            String status) {
+        Result result = createHouse(id, type, area, address,
+                landlordId, landlordName, landlordContact, status);
+
+        // 日志只在真正写进去之后记。失败也记的话，「日志里有一条新增房屋」
+        // 就不再等价于「库里多了这套房」，日志的可用性会被这一点毁掉。
+        if (result.isSuccess()) {
+            logService.record("新增房屋", trim(id), trim(address));
+        }
+        return result;
+    }
+
+    /**
+     * 新增的实际实现：校验 + 冲突判断 + 写入，<b>不写操作日志</b>。
+     *
+     * <p>拆出来是给批量导入用的（R-006）。导入 100 条若逐条写日志，概览页的
+     * 「最近操作」会被同源的 100 条「新增房屋」刷满，反而看不出「用户刚才做了
+     * 一件事」；导入场景由 {@link #importHouses} 统一记一条汇总。
+     *
+     * <p>拆出去的<b>只有日志</b>这一件事：校验、房东电话的加密、ID 冲突的处理
+     * 仍然只有这一份实现 —— 导入走的正是这条路径，因此不会出现「单条新增能拦住
+     * 的数据，导入却能写进去」这种偏差。
+     */
+    private Result createHouse(String id, String type, double area, String address,
+                               String landlordId, String landlordName, String landlordContact,
+                               String status) {
         House house = buildHouse(id, type, area, address, landlordId, landlordName,
                 landlordContact, status);
 
@@ -74,7 +122,6 @@ public class HouseController {
                 return Result.fail("保存失败：记录未写入。");
             }
 
-            logService.record("新增房屋", house.getId(), house.getAddress());
             return landlordExisted
                     ? Result.ok("房屋添加成功（房东「" + house.getLandlord().getId()
                             + "」已存在，沿用其原有信息）")
@@ -123,6 +170,96 @@ public class HouseController {
         } catch (DataAccessException e) {
             return Result.fail(describe(e, "房屋"));
         }
+    }
+
+    // ---------------------------------------------------------------- 批量导入
+
+    /**
+     * 批量导入房屋。对应需求报告 R-006。
+     *
+     * <p><b>逐条写入、跳过坏行</b>，而不是整批放进一个事务：100 条里坏 4 条，
+     * 全部回滚会让用户连那 96 条好的也拿不到，而他手上除了「导入失败」之外
+     * 没有任何线索去找问题在哪。代价是「库里已经进了 96 条」必须讲清楚 ——
+     * 这由返回的 {@link HouseImportReport#summary()} 承担。
+     *
+     * <p><b>每一行都走 {@link #createHouse}</b>，也就是单条新增用的那条路径。
+     * 校验、房东电话加密、ID 冲突判断因此只有一份实现，不会出现「单条新增拦得住
+     * 的数据，导入却能写进去」这种最难解释的偏差。
+     *
+     * <p>权限与 {@link #deleteHouse} 同级（仅 ADMIN）：一次写入几十上百条的影响面
+     * 比单条新增大得多。界面上的按钮禁用只是体验，这里才是真正拦住的地方。
+     *
+     * @param dataRows   数据行（<b>不含表头</b>），由 {@code HouseCsv.parse} 得到
+     * @param sourceName 来源文件名，写进操作日志，便于事后追溯这批数据从哪来
+     */
+    public HouseImportReport importHouses(List<String[]> dataRows, String sourceName) {
+        if (!Session.can(Permissions.HOUSE_IMPORT)) {
+            System.err.println("[权限不足] " + Session.currentUserLabel()
+                    + " 尝试批量导入房屋，已拦截");
+            return HouseImportReport.denied("权限不足：当前账号（" + Session.currentRoleName()
+                    + "）没有批量导入房屋的权限，请联系管理员。");
+        }
+
+        List<HouseImportReport.Failure> failures = new ArrayList<>();
+        int success = 0;
+        int line = FIRST_DATA_LINE;
+
+        for (String[] row : dataRows) {
+            Result result = importRow(row);
+            if (result.isSuccess()) {
+                success++;
+            } else {
+                // 行号带上表头那一行，与用户在 Excel / 编辑器里看到的一致
+                failures.add(new HouseImportReport.Failure(
+                        line, cell(row, COLUMN_ID), result.getMessage()));
+            }
+            line++;
+        }
+
+        HouseImportReport report = HouseImportReport.of(dataRows.size(), success, failures);
+
+        // 只记一条汇总：导入 100 条若逐条写日志，概览页的「最近操作」会被同源的
+        // 记录刷满。明细在导入报告里已经给到用户了。
+        String source = trim(sourceName);
+        logService.record("导入房屋", source.isEmpty() ? "CSV 文件" : source, report.summary());
+        return report;
+    }
+
+    /**
+     * 导入一行。面积要先从文本转成数字 —— 这一步是导入特有的，
+     * CSV 里它一定是字符串，而 {@code Validators.positiveNumber} 只认已经转好的
+     * {@code double}，会把「abc」和「0」报成同一句话，用户看不出该改哪里。
+     */
+    private Result importRow(String[] row) {
+        String areaText = cell(row, COLUMN_AREA);
+        if (areaText.isEmpty()) {
+            return Result.fail(Result.Kind.VALIDATION, "面积不能为空");
+        }
+
+        double area;
+        try {
+            area = Double.parseDouble(areaText);
+        } catch (NumberFormatException e) {
+            return Result.fail(Result.Kind.VALIDATION, "面积「" + areaText + "」不是数字");
+        }
+
+        return createHouse(
+                cell(row, COLUMN_ID),
+                cell(row, COLUMN_TYPE),
+                area,
+                cell(row, COLUMN_ADDRESS),
+                cell(row, COLUMN_LANDLORD_ID),
+                cell(row, COLUMN_LANDLORD_NAME),
+                cell(row, COLUMN_LANDLORD_CONTACT),
+                cell(row, COLUMN_STATUS));
+    }
+
+    /** 取某一列并去掉两端空白。列数不足时补空串，交给 validate 报「XX不能为空」 */
+    private String cell(String[] row, int index) {
+        if (row == null || index >= row.length) {
+            return "";
+        }
+        return trim(row[index]);
     }
 
     // ---------------------------------------------------------------- 删除

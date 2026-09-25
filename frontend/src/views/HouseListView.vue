@@ -8,6 +8,7 @@ import {
   deleteHouse,
   exportHouses,
   fetchDeletionInfo,
+  importHouses,
   listHouses,
   listLandlords,
   updateHouse
@@ -417,6 +418,64 @@ async function onExport() {
     exporting.value = false
   }
 }
+
+// ---------------------------------------------------------------- 导入
+
+const canImport = computed(() => session.hasPermission(PERMISSION.HOUSE_IMPORT))
+const importing = ref(false)
+const importInput = ref(null)
+
+/** 导入报告。非空即弹出对话框把逐条失败原因摆出来 */
+const importReport = ref(null)
+const importDialogVisible = ref(false)
+
+/** 按钮为何不可点。禁用而不说原因，用户只会以为界面坏了 */
+const importHint = computed(() =>
+  canImport.value ? '' : '需要管理员权限（批量导入会一次写入大量数据）'
+)
+
+/** 打开文件选择框。先清空 value，否则连着选同一个文件不会触发 change */
+function pickImportFile() {
+  if (!importInput.value) {
+    return
+  }
+  importInput.value.value = ''
+  importInput.value.click()
+}
+
+async function onImportFile(event) {
+  const file = event.target.files?.[0]
+  if (!file) {
+    return
+  }
+
+  /* 扩展名只是提前拦一道，真正的判据是表头，那在服务端 ——
+     拿客户表、带看表来导，会在写库之前被整批拒绝并说明原因。 */
+  if (!file.name.toLowerCase().endsWith('.csv')) {
+    await ElMessageBox.alert(
+      '只能导入 CSV 文件。可以先用「导出 CSV」得到一份，在 Excel 里编辑后另存为 CSV 再导入。',
+      '文件格式不对',
+      { type: 'warning', confirmButtonText: '知道了' }
+    )
+    return
+  }
+
+  importing.value = true
+  try {
+    const { report } = await importHouses(file)
+    importReport.value = report
+    importDialogVisible.value = true
+    // 报告只说「写成功了多少条」，列表得重新拉一次才与它相符
+    await load({ keepSelection: false })
+  } catch (error) {
+    await ElMessageBox.alert(error.message, '导入失败', {
+      type: 'error',
+      confirmButtonText: '知道了'
+    })
+  } finally {
+    importing.value = false
+  }
+}
 </script>
 
 <template>
@@ -458,6 +517,28 @@ async function onExport() {
           </el-tooltip>
 
           <el-button plain :loading="exporting" @click="onExport">导出 CSV</el-button>
+
+          <!-- R-006：与导出并排 —— 两者是对称的一对操作，导出的文件应当能原样导回来 -->
+          <el-tooltip :content="importHint" placement="top" :disabled="!importHint">
+            <span class="btn-wrap">
+              <el-button
+                plain
+                :disabled="!canImport"
+                :loading="importing"
+                @click="pickImportFile"
+              >
+                导入 CSV
+              </el-button>
+            </span>
+          </el-tooltip>
+          <input
+            ref="importInput"
+            class="file-input"
+            type="file"
+            accept=".csv,text/csv"
+            @change="onImportFile"
+          />
+
           <el-button :icon="Refresh" :loading="loading" @click="load()">刷新数据</el-button>
         </div>
 
@@ -650,6 +731,45 @@ async function onExport() {
       </template>
     </el-dialog>
 
+    <!-- 导入结果。行号是 CSV 文件里的行号，用户能直接回到文件定位 -->
+    <el-dialog v-model="importDialogVisible" title="导入结果" width="680px">
+      <template v-if="importReport">
+        <p class="import-summary">
+          共 {{ importReport.total }} 条，成功
+          <span class="import-ok">{{ importReport.success }}</span>
+          条，失败
+          <span :class="importReport.failureCount ? 'import-bad' : 'import-ok'">
+            {{ importReport.failureCount }}
+          </span>
+          条。
+        </p>
+
+        <p v-if="importReport.failureCount === 0" class="form-hint">
+          全部导入成功，列表已刷新。
+        </p>
+
+        <template v-else>
+          <p class="form-hint">
+            下面这些行没有写进数据库，其余 {{ importReport.success }} 条已经正常入库。
+            行号对应 CSV 文件里的行号（第 1 行是表头）。
+          </p>
+          <el-table :data="importReport.failures" max-height="320" size="small" border>
+            <el-table-column prop="line" label="行号" width="76" align="center" />
+            <el-table-column label="房屋ID" width="120">
+              <template #default="{ row }">
+                {{ row.houseId || '（空）' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="reason" label="未能导入的原因" min-width="360" />
+          </el-table>
+        </template>
+      </template>
+
+      <template #footer>
+        <el-button type="primary" @click="importDialogVisible = false">知道了</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 危险操作确认框：默认焦点在「取消」，连带后果逐条列出 -->
     <ConfirmDialog
       v-model="confirmVisible"
@@ -795,5 +915,28 @@ async function onExport() {
   margin: 0 0 4px;
   font-size: var(--font-caption);
   color: var(--text-secondary);
+}
+
+/* ---- 导入 ---- */
+
+/* 原生文件选择框只作为「被点」的载体，界面上不出现 */
+.file-input {
+  display: none;
+}
+
+.import-summary {
+  margin: 0 0 8px;
+  font-size: var(--font-body);
+  color: var(--text-heading);
+}
+
+.import-ok {
+  font-weight: var(--weight-bold);
+  color: var(--success);
+}
+
+.import-bad {
+  font-weight: var(--weight-bold);
+  color: var(--danger);
 }
 </style>

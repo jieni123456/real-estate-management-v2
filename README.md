@@ -138,8 +138,9 @@ Swing 程序直接调用，也可以被 Spring Boot 装配。这不是「顺手�
 源码与文档里出现明文口令是坏习惯，它们定义在 `DatabaseUtil.initializeDatabase()` 的
 预设值中，首次建库时写入。
 
-两个角色的差别只有一条：**经纪人不能删除数据**，其余（查看、新增、编辑、导出）相同。
-删除是系统里唯一不可逆的操作。
+两个角色的差别有两条：**经纪人不能删除数据，也不能批量导入**，
+其余（查看、新增、编辑、导出）相同。这两项都属于**不可逆或影响面大**的操作
+——删除没法撤销，批量导入一次写入几十上百条，风险级别与删除相当。
 
 ## 接口概览
 
@@ -149,7 +150,7 @@ Swing 程序直接调用，也可以被 Spring Boot 装配。这不是「顺手�
 | 身份 | `GET /api/auth/me`、`POST /api/auth/logout` |
 | 概览 | `GET /api/stats/overview` |
 | 日志 | `GET /api/logs?limit=` |
-| 房屋 | `GET\|POST /api/houses`、`PUT\|DELETE /api/houses/{id}`、`GET /api/houses/landlords`、`GET /api/houses/{id}/deletion-info`、`GET /api/houses/export` |
+| 房屋 | `GET\|POST /api/houses`、`PUT\|DELETE /api/houses/{id}`、`GET /api/houses/landlords`、`GET /api/houses/{id}/deletion-info`、`GET /api/houses/export`、`POST /api/houses/import` |
 | 客户 | `GET\|POST /api/customers`、`PUT\|DELETE /api/customers/{id}`、`GET /api/customers/{id}/deletion-info`、`GET /api/customers/export` |
 | 带看 | `GET\|POST /api/viewings`、`PUT\|DELETE /api/viewings/{id}`、`GET /api/viewings/options`、`GET /api/viewings/export` |
 
@@ -159,12 +160,13 @@ Swing 程序直接调用，也可以被 Spring Boot 装配。这不是「顺手�
 ## 测试
 
 ```bash
-./mvnw test                                  # core 260 项 + web 22 项
+./mvnw test                                  # core 314 项 + web 22 项
 cd frontend && npm run check                 # 前端纯逻辑自检 32 项
 ```
 
 单元测试覆盖纯逻辑：密码加盐与旧格式兼容、权限映射与 fail-safe、输入校验、
-关键字匹配、数值格式化、CSV 转义、带看结果与房屋状态的联动规则、查询筛选、JWT 签发与篡改。
+关键字匹配、数值格式化、CSV 转义、CSV 解析与「导出再导入」的回路、带看结果与房屋状态的联动规则、
+查询筛选、JWT 签发与篡改。
 
 需要连数据库或真实界面的验证另走「定向探针」与无头浏览器端到端脚本，
 不混进单元测试 —— 它们依赖外部环境，不该让 `./mvnw test` 变得不可靠。

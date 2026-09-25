@@ -19,8 +19,16 @@ public final class PermissionsTest {
     public static void run(TestRunner t) {
         t.suite("Permissions · 角色与权限映射");
 
-        t.equals("ADMIN 权限数量", 9, Permissions.of(Permissions.ROLE_ADMIN).size());
+        // 10 项 = 房屋 4（含 R-006 新增的 house:import）+ 客户 3 + 带看 3
+        t.equals("ADMIN 权限数量", 10, Permissions.of(Permissions.ROLE_ADMIN).size());
         t.equals("AGENT 权限数量", 6, Permissions.of(Permissions.ROLE_AGENT).size());
+
+        // R-006：批量导入与三个删除权限同级 —— 一次写入几十上百条，
+        // 影响面比单条新增大得多，只给 ADMIN
+        t.check("ADMIN 有批量导入房屋权限",
+                Permissions.of("ADMIN").contains(Permissions.HOUSE_IMPORT));
+        t.check("AGENT 无批量导入房屋权限",
+                !Permissions.of("AGENT").contains(Permissions.HOUSE_IMPORT));
 
         t.check("ADMIN 有删除房屋权限",
                 Permissions.of("ADMIN").contains(Permissions.HOUSE_DELETE));

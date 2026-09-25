@@ -10,6 +10,7 @@
 export const PERMISSION = {
   HOUSE_VIEW: 'house:view',
   HOUSE_ADD: 'house:add',
+  HOUSE_IMPORT: 'house:import',
   HOUSE_DELETE: 'house:delete',
   CUSTOMER_VIEW: 'customer:view',
   CUSTOMER_ADD: 'customer:add',

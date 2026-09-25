@@ -7,7 +7,11 @@ import java.util.Set;
  * 权限点定义与「角色 → 权限」映射。
  *
  * <p>对应需求报告 R-001。设计原则：写操作放开，删除操作收回。
- * AGENT 持有 9 项中的 6 项，三个删除权限（房屋 / 客户 / 带看）被收回。
+ * AGENT 持有 10 项中的 6 项，三个删除权限（房屋 / 客户 / 带看）被收回。
+ *
+ * <p>{@code house:import} 是 R-006 新增的，与三个删除权限同样只给 ADMIN：
+ * 它一次要写入几十上百条记录，改错一行的影响面比单条新增大得多，
+ * 风险级别与「删除」更接近，而不是与「新增」。
  */
 public final class Permissions {
 
@@ -15,6 +19,7 @@ public final class Permissions {
 
     public static final String HOUSE_VIEW = "house:view";
     public static final String HOUSE_ADD = "house:add";
+    public static final String HOUSE_IMPORT = "house:import";
     public static final String HOUSE_DELETE = "house:delete";
 
     public static final String CUSTOMER_VIEW = "customer:view";
@@ -31,11 +36,11 @@ public final class Permissions {
     public static final String ROLE_AGENT = "AGENT";
 
     private static final Set<String> ADMIN_PERMISSIONS = Set.of(
-            HOUSE_VIEW, HOUSE_ADD, HOUSE_DELETE,
+            HOUSE_VIEW, HOUSE_ADD, HOUSE_IMPORT, HOUSE_DELETE,
             CUSTOMER_VIEW, CUSTOMER_ADD, CUSTOMER_DELETE,
             VIEWING_VIEW, VIEWING_ADD, VIEWING_DELETE);
 
-    /** AGENT 可增可查，但不能删除任何数据 */
+    /** AGENT 可增可查，但不能删除任何数据，也不能批量导入 */
     private static final Set<String> AGENT_PERMISSIONS = Set.of(
             HOUSE_VIEW, HOUSE_ADD,
             CUSTOMER_VIEW, CUSTOMER_ADD,

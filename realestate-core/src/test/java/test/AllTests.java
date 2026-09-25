@@ -34,6 +34,7 @@ public final class AllTests {
         ValidatorsTest.run(runner);
         DisplayTest.run(runner);
         ExportTest.run(runner);
+        HouseCsvTest.run(runner);
         ViewingTest.run(runner);
         HouseTest.run(runner);
         ViewingRulesTest.run(runner);
