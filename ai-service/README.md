@@ -38,7 +38,10 @@ ai-service/
 
 - **Python 3.12 以上**。卡在 3.12 的是 `numpy 2.5.3`，它声明了 `requires-python >= 3.12`；
   而 numpy 在依赖链里（`langchain-core` 只把它列为可选依赖，得自己装）。
-  其余依赖最低只要 3.10。本项目在 3.13 上跑通了全部测试。
+  其余依赖最低只要 3.10。
+  实测：**3.12.10 与 3.13.12 上都跑通了 70 项测试与真实调用**，
+  且两个版本解析出的依赖版本完全一致（openai 3.19.2 / langchain-core 1.6.5 /
+  langchain-openai 1.6.6 / pydantic 2.13.5 / numpy 2.5.3）。
 - 一个通义千问（阿里云百炼）的 API Key。
 - 网络：`dashscope.aliyuncs.com` 可直连，**不需要挂 VPN**。
 
@@ -54,10 +57,15 @@ cd E:/二手房中介管理系统/ai-service
 
 python -m venv .venv
 
-# Git Bash
-source .venv/Scripts/activate
-# PowerShell / cmd
-# .venv\Scripts\activate
+# 激活虚拟环境（可选——本机上有个坑，见下）
+#   Git Bash     source .venv/Scripts/activate
+#   cmd          .venv\Scripts\activate.bat
+#   PowerShell   .venv\Scripts\activate.bat
+#
+# ⚠️ PowerShell 里若写 `.venv\Scripts\activate`（不带 .bat），它会去加载 activate.ps1，
+#    而本机执行策略是 Restricted，直接报「因为在此系统上禁止运行脚本」。
+#    最省事的做法是**干脆不激活**，直接调解释器，三个终端都能跑：
+#        .venv\Scripts\python.exe demo_day1.py
 
 pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
@@ -99,6 +107,39 @@ python demo_day2.py "有没有带车位的房子？"
 ```bash
 python -m pytest tests -q
 ```
+
+### 实测输出（2026-09-25，真实 API Key）
+
+Day 1 流式：
+
+```
+模型输出：章贡区89.5㎡两室一厅，近名校、学区稳定，装修温馨安静，步行可达重点中小学，是陪读家庭的理想选择！
+  首段到达：0.58s      全部完成：1.09s      共 8 段
+```
+
+Day 1 抽取（输入：「章贡区长征大道锦绣花园 3 栋 802，两室一厅，89.5 个平方，南北通透，中间楼层，现在空着随时能看。」）：
+
+```
+{ "ok": true,
+  "data": {"type": "两室一厅", "area": 89.5,
+           "address": "章贡区长征大道锦绣花园 3 栋 802", "status": "空置"},
+  "missing": [], "reason": "" }
+→ 一轮通过校验，4 个字段全部落在 houses 表的真实列上
+```
+
+Day 2 检索问答（问题：「有没有章贡区空着、又离赣州三中很近的房子？」）：
+
+```
+[H-1001] 相似度 +0.7512  两室一厅 / 89.5 平 / 空置   ← 小区对面就是赣州三中
+[H-1004] 相似度 +0.6895  两室一厅 / 78.0 平 / 空置
+[H-1006] 相似度 +0.6743  四室两厅 / 156.0 平 / 已租出
+
+  向量化查询： 210.877 ms   （要联网，一次真实的接口调用）
+  向量比较  ：   0.489 ms   （纯本地，6 次余弦相似度）
+```
+
+看第一条命中：**「离赣州三中很近」只写在 `remark` 里，`address` 列中并没有这三个字**
+—— 结构化查询查不到，语义检索查得到。这是「为什么要做 RAG」最直接的证据。
 
 ---
 
@@ -248,8 +289,11 @@ Day 2 的数据是 `data/houses.json` 里的 **6 条**房源。检索就是一�
 | 100,000 | 10.030 ms | 2786x |
 
 关键在最后一列：**数据量涨了一万七千倍，检索耗时也才到 10 毫秒**，
-仍然小于「联网把问题向量化」那一趟（通常几十毫秒）。
-也就是说，在十万条量级之前，检索的瓶颈根本不在向量比较上。
+仍然小于「联网把问题向量化」那一趟——**实测 163 ~ 302 ms**（`text-embedding-v4`，
+多次调用取的值域；见 `demo_day2.py` 每次打印的「向量化查询」那一行）。
+
+也就是说：**两边的差距是三个数量级，而那 200 毫秒还是每次提问都逃不掉的固定开销。**
+在这个规模给向量比较做优化（加索引、上向量库），等于在优化整条链路上最不值钱的一环。
 
 `demo_day2.py` 每次会打印两行耗时，是同一件事的现场版本：
 
